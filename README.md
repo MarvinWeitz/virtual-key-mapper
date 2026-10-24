@@ -111,6 +111,7 @@ vkm login          # browser sign-in; choose the same team there
 vkm status         # "state": "ready"
 
 # 2. Once per machine: connect your tools.
+vkm models list                              # the model aliases your gateway offers you
 vkm setup claude --model YOUR_CLAUDE_ALIAS   # start model; /model lists all gateway models
 vkm setup codex --model YOUR_CODEX_ALIAS
 vkm setup opencode
@@ -282,6 +283,9 @@ instead and paste its command line into Windows Terminal (Settings → your Powe
 Command line) or its snippet into your VS Code user settings. Check in a new terminal:
 `Get-Command codex` shows `Function`.
 
+Codex cannot list the gateway's models itself; `vkm models list` prints the aliases to pass to
+`--model`.
+
 Codex reads the label headers from environment variables that the shell hook sets per directory.
 Without them, or while a required label has no value, Codex gets no credential and the gateway refuses the request. The hook also makes
 `codex` start with `--no-daemon`: Codex's shared background daemon would keep the variables of the
@@ -367,7 +371,7 @@ supported gateway, the headers a proxy must pass, certificates and installation 
 ## ⌨️ Commands
 
 `profile add|list|show|use|update`, `login`, `status`, `token [--json]`, `logout`,
-`repo show|bind|unbind|list`, `labels list|values`, `setup claude|codex|opencode`, `run`,
+`repo show|bind|unbind|list`, `labels list|values`, `models list [--json]`, `setup claude|codex|opencode`, `run`,
 `shell-init`, and `claude guard` (the hook). `vkm COMMAND --help` explains each.
 
 ## 📌 Releases

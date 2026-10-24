@@ -48,7 +48,7 @@ sign-in endpoints come from the gateway's discovery document and must be on the 
 | `POST` token endpoint (from discovery) | vkm | `login`, and renewal whenever the short-lived token expires while tools run |
 | `POST` revocation endpoint (from discovery) | vkm | `logout`, re-login |
 | `GET /tag/list` | vkm | only to suggest label values (`labels values`, pickers), when tags carry that label |
-| `GET /v1/models` | vkm (`setup opencode`), Copilot Chat extension, Claude Code (model list) | setup, extension start, each Claude Code start |
+| `GET /v1/models` | vkm (`models list`, `setup opencode`), Copilot Chat extension, Claude Code (model list) | `models list`, setup, extension start, each Claude Code start |
 | `POST /v1/messages`, `POST /v1/messages/count_tokens`, `HEAD /api/hello` | Claude Code (CLI and VS Code extension) | every request; the last two are optional |
 | `POST /v1/responses` | Codex | every request |
 | `POST /v1/chat/completions` | OpenCode, Copilot Chat extension | every request |

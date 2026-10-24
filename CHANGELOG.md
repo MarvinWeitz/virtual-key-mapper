@@ -7,6 +7,8 @@ the date.
 
 ## Unreleased
 
+- `vkm models list [--json]` prints the model aliases the gateway offers you, the names to pass
+  to `--model` (Codex cannot list them itself). `vkm setup opencode` uses the same list.
 - Claude Code lists your gateway's models: `vkm setup claude` and `vkm run claude` turn on Claude
   Code's gateway model discovery, so `/model` in the CLI and the VS Code extension shows the models
   your key may use, as Copilot Chat does. `--model` is optional and only sets the starting model;

@@ -15,6 +15,7 @@ from .labels import (
     MAX_VALUE, NO_LABELS_NOTICE, SOURCES, Attribution, Choice, Label, LabelConfig, LabelDefinition, MissingLabelsError,
     OutputOverride, definitions_from_dict, env_name, validate_key, validate_value,
 )
+from .models import list_models
 from .profiles import Profile, ProfileStore, default_home, with_label, with_output, without_label
 from .integrations.claude import Claude
 from .integrations.common import (
@@ -387,6 +388,16 @@ def status(context: Context) -> None:
 def logout(context: Context) -> None:
     context.auth.logout(notify)
     print(f"Logged out of '{context.profile.name}'. Previously issued access tokens expire naturally.")
+
+
+def models_list(context: Context) -> None:
+    models = list_models(context.gateway, context.token())
+    if context.args.json:
+        print(json.dumps([{"id": model} for model in models], indent=2))
+        return
+    for model in models:
+        print(model)
+    notify(f"{len(models)} model(s) the gateway offers '{context.profile.name}'; pass one to --model.")
 
 
 # Labels, repositories and agents
@@ -786,6 +797,13 @@ def parser() -> argparse.ArgumentParser:
         command = commands.add_parser(name, help=text)
         _profile_option(command)
         command.set_defaults(handler=handler)
+
+    models = commands.add_parser("models", help="Show the models the gateway offers you.")
+    model_actions = models.add_subparsers(dest="action", required=True)
+    command = model_actions.add_parser("list", help="The model aliases you can pass to --model, as the gateway lists them.")
+    _profile_option(command)
+    command.add_argument("--json", action="store_true")
+    command.set_defaults(handler=models_list)
 
     labels = commands.add_parser("labels", help="Show the labels in effect and the values they offer.")
     label_actions = labels.add_subparsers(dest="action", required=True)

@@ -20,8 +20,8 @@ from typing import Mapping
 from ..adapters import Api, IntegrationContext
 from ..errors import CredentialError
 from ..labels import Attribution
+from ..models import list_models
 from ..profiles import atomic_write_text
-from ..transport import JsonTransport
 from .common import TOKEN_VARIABLE, attribution_headers, child_environment, execute, set_launch_marker
 
 PROVIDER = "vkm"
@@ -229,14 +229,7 @@ class OpenCode:
         """The gateway's models (OpenAI-compatible model list), or just the given one if listing fails."""
         models = [model] if model else []
         try:
-            listed = JsonTransport().request(
-                "GET", context.gateway.endpoint(Api.OPENAI_CHAT) + "/models",
-                headers={"Authorization": "Bearer " + context.token},
-            )
-            models += [
-                row["id"] for row in listed.get("data", [])
-                if isinstance(row, dict) and isinstance(row.get("id"), str) and row["id"] not in models
-            ]
+            models += [listed for listed in list_models(context.gateway, context.token) if listed not in models]
         except CredentialError:
             pass
         if not models:
