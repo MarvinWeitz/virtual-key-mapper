@@ -1,0 +1,48 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "permissions": {
+    "allow": [
+      "Bash(python -m unittest:*)",
+      "Bash(python3 -m unittest:*)",
+      "Bash(.venv/bin/python -m unittest:*)",
+      "Bash(python -m pip install -e .)",
+      "Bash(python3 -m pip install -e .)",
+      "Bash(.venv/bin/python -m pip install -e .)",
+      "Bash(vkm --help)",
+      "Bash(npm ci:*)",
+      "Bash(npm test)",
+      "Bash(npm run compile)",
+      "Bash(npm run test:host)",
+      "Bash(npx tsc:*)",
+      "Bash(node ci/agents/locate.mjs)",
+      "Bash(npm view:*)",
+      "Bash(git status:*)",
+      "Bash(git diff:*)",
+      "Bash(git log:*)",
+      "Bash(git show:*)",
+      "Bash(git branch:*)"
+    ],
+    "deny": [
+      "Read(./.env)",
+      "Read(./.env.*)",
+      "Bash(VKM_TEST_VAULT=1:*)",
+      "Bash(git push --force:*)",
+      "Bash(git push -f:*)",
+      "Bash(npm publish:*)",
+      "Bash(twine upload:*)",
+      "Bash(vsce publish:*)"
+    ]
+  },
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/session-start.sh"
+          }
+        ]
+      }
+    ]
+  }
+}
