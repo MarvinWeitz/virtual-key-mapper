@@ -104,7 +104,7 @@ class OpenCodeSetupTests(ToolTestCase):
     def setup_opencode(self, model="alias", listed=None):
         response = {"data": [{"id": name} for name in (listed or [])]} if listed is not None else None
         with patch("virtual_key_mapper.integrations.opencode.shutil.which", return_value=None), \
-                patch("virtual_key_mapper.integrations.opencode.JsonTransport.request",
+                patch("virtual_key_mapper.models.JsonTransport.request",
                       return_value=response, side_effect=None if response else CredentialError("offline")) as request:
             notes = OpenCode().setup(self.context, model)
         return notes, request
