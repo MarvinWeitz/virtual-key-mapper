@@ -2,7 +2,7 @@
 
 What Virtual Key Mapper and the tools it sets up connect to, for firewall, proxy and TLS
 inspection rules. In short: **outbound HTTPS to your LLM gateway**, plus the central rules URL
-if you use one. Nothing listens on the network; the sign-in callback and the dev container
+if you use one. Nothing listens on the network; the sign-in callback, `vkm serve` and the dev container
 relay stay on the machine.
 
 ## What to allow
@@ -79,6 +79,9 @@ origin, and for a browser sign-in its identity provider.
 
 - The OS credential vault (Windows Credential Manager, macOS Keychain, Secret Service on Linux).
 - The sign-in callback on `127.0.0.1` with a random port, open only during `login`.
+- `vkm serve` on `127.0.0.1`, on a free port or `--port`, while it runs. It accepts only requests
+  addressed to `127.0.0.1` or `localhost` that carry the token from `serve.json`, and refuses
+  requests from websites. Requests it makes to the gateway are the ones listed above.
 - The dev container relay: a Unix socket inside the container, carried over VS Code's own
   remote connection to the local machine. No port is opened.
 

@@ -23,6 +23,7 @@ from .registry import AUTH, GATEWAYS, INTEGRATIONS, auth_for, gateway_for, gatew
 from .repositories import RepositoryStore, find_checkout
 from .resolve import label_config, load_config, missing_error
 from .rules import RulesLoader
+from .server import serve
 from .service import CLAUDE, SOURCE_OPTIONS, Service, checkout_origin, profile_document
 from .shells import SHELLS, assignments, hook, pwsh_loader, without_daemon
 from .storage import NativeKeyring
@@ -507,6 +508,12 @@ def run(context: Context) -> int:
 # Tool setup and the Claude prompt guard
 
 
+def serve_api(context: Context) -> None:
+    if not 0 <= context.args.port <= 65535:
+        raise CredentialError("--port must be between 0 and 65535.")
+    serve(context.store, _directory(context.args), context.args.port, notify)
+
+
 def setup_tool(context: Context) -> None:
     args = context.args
     integration = INTEGRATIONS[args.tool]
@@ -715,6 +722,11 @@ def parser() -> argparse.ArgumentParser:
     command.add_argument("agent", choices=sorted(INTEGRATIONS))
     command.add_argument("agent_args", nargs=argparse.REMAINDER)
     command.set_defaults(handler=run)
+
+    command = commands.add_parser("serve", help="Serve the CLI's JSON documents to local apps on 127.0.0.1 until stopped.")
+    command.add_argument("--port", type=int, default=0, help="Port on 127.0.0.1 (default: a free one).")
+    command.add_argument("--directory", type=Path, help="Default folder for the labels; otherwise the current directory.")
+    command.set_defaults(handler=serve_api)
 
     command = commands.add_parser("setup", help="Configure a tool once to use this CLI for credentials and labels.")
     command.add_argument("tool", choices=sorted(INTEGRATIONS))
