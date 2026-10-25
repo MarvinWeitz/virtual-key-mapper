@@ -1,6 +1,7 @@
-"""The local API (`vkm serve`): the CLI's JSON documents over HTTP on 127.0.0.1, for local apps and the browser UI.
+"""The local API (`vkm serve`) and browser UI (`vkm ui`): the CLI's JSON documents over HTTP on 127.0.0.1.
 
-Every request needs the random token of this start, which only the user can read from ``serve.json`` in the
+The UI's static files need no token; the page reads it from the address ``vkm ui`` opens. Every API request needs
+the random token of this start, which only the user can read from ``serve.json`` in the
 configuration folder, and the server's own ``Host``; browsers on other sites are refused by ``Origin``.
 Reads are GET; changes are POST with a JSON object body. Responses are ``{"result": ..., "messages": [...]}``
 or ``{"error": ..., "messages": [...]}``.
@@ -8,11 +9,13 @@ or ``{"error": ..., "messages": [...]}``.
 
 import dataclasses
 import hmac
+import importlib.resources
 import json
 import os
 import secrets
 import signal
 import sys
+import webbrowser
 from dataclasses import dataclass
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -31,6 +34,12 @@ HOST = "127.0.0.1"
 STATE_FILE = "serve.json"
 _MAX_QUERY = 8192
 _MAX_BODY = 65536
+_MAX_FOLDERS = 500
+STATIC = {"/": ("index.html", "text/html"), "/app.js": ("app.js", "text/javascript"), "/app.css": ("app.css", "text/css")}
+_POLICY = (
+    "default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src 'self' data:; "
+    "base-uri 'none'; form-action 'none'; frame-ancestors 'none'"
+)
 
 
 class ApiError(Exception):
@@ -100,6 +109,8 @@ class Api:
             directory = self.folder(_one(query, "directory"))
             explicit = service.explicit(_labels(query), "explicit")
             return service.repository(directory, find_checkout(directory), explicit)
+        if route == ("GET", "api", "folders"):
+            return self.folders(_one(query, "directory"))
         if route == ("GET", "api", "repositories"):
             return service.bindings()
         if route == ("POST", "api", "repository", "bind"):
@@ -123,6 +134,26 @@ class Api:
             raise ApiError(405, f"{method} is not accepted for {path}.")
         raise ApiError(404, f"No such endpoint: {path}")
 
+    def folders(self, directory: str | None) -> dict:
+        """The subfolders of a folder for the UI's folder picker; hidden ones are left out."""
+        path = self.folder(directory)
+        folders = []
+        try:
+            entries = sorted(path.iterdir(), key=lambda entry: entry.name.lower())
+        except OSError:
+            raise ApiError(400, f"Cannot list {path}.") from None
+        for entry in entries:
+            if entry.name.startswith(".") or not _is_folder(entry):
+                continue
+            folders.append({"name": entry.name, "path": str(entry), "git": (entry / ".git").exists()})
+            if len(folders) == _MAX_FOLDERS:
+                break
+        parent = path.parent if path.parent != path else None
+        return {
+            "path": str(path), "parent": str(parent) if parent else None, "home": str(Path.home()),
+            "git": (path / ".git").exists(), "folders": folders,
+        }
+
     def folder(self, directory: str | None) -> Path:
         try:
             path = Path(directory).expanduser().resolve() if directory else self.directory
@@ -137,8 +168,15 @@ _ROUTES = {
     ("GET", "api"), ("GET", "api", "profiles"), ("POST", "api", "profiles"), ("POST", "api", "profiles", "default"),
     ("GET", "api", "tools"), ("GET", "api", "status"), ("POST", "api", "login"), ("POST", "api", "logout"),
     ("GET", "api", "token"), ("GET", "api", "models"), ("GET", "api", "labels"), ("GET", "api", "repository"),
-    ("GET", "api", "repositories"), ("POST", "api", "repository", "bind"), ("POST", "api", "repository", "unbind"),
+    ("GET", "api", "repositories"), ("GET", "api", "folders"), ("POST", "api", "repository", "bind"), ("POST", "api", "repository", "unbind"),
 }
+
+
+def _is_folder(path: Path) -> bool:
+    try:
+        return path.is_dir()
+    except OSError:
+        return False
 
 
 def _field(body: dict, name: str, kind: type, *, required: bool = False):
@@ -231,6 +269,9 @@ class Handler(BaseHTTPRequestHandler):
     do_PUT = do_PATCH = do_DELETE = do_OPTIONS = refuse
 
     def answer(self, method: str) -> None:
+        if method == "GET" and urlsplit(self.path).path in STATIC:
+            self.static(urlsplit(self.path).path)
+            return
         messages: list[str] = []
         try:
             self.check()
@@ -267,6 +308,24 @@ class Handler(BaseHTTPRequestHandler):
         if not isinstance(value, dict):
             raise ApiError(400, "The body must be a JSON object.")
         return value
+
+    def static(self, path: str) -> None:
+        """The UI's files: no secrets in them, but only for this server's own host name."""
+        if self.headers.get("Host") not in self.server.origins():
+            self.reply(403, {"error": "Requests must be addressed to 127.0.0.1 or localhost with this server's port.", "messages": []})
+            return
+        name, kind = STATIC[path]
+        body = importlib.resources.files(__package__).joinpath("ui", name).read_bytes()
+        self.send_response(200)
+        self.send_header("Content-Type", f"{kind}; charset=utf-8")
+        self.send_header("Content-Length", str(len(body)))
+        self.send_header("Cache-Control", "no-store")
+        self.send_header("Content-Security-Policy", _POLICY)
+        self.send_header("X-Content-Type-Options", "nosniff")
+        self.send_header("X-Frame-Options", "DENY")
+        self.send_header("Referrer-Policy", "no-referrer")
+        self.end_headers()
+        self.wfile.write(body)
 
     def check(self) -> None:
         """Refuse requests to another host name (DNS rebinding), from other sites, or without this start's token."""
@@ -313,8 +372,13 @@ def remove_state(store: ProfileStore, token: str) -> None:
         pass
 
 
-def serve(store: ProfileStore, directory: Path, port: int, notify: Callable[[str], None]) -> None:
-    """Run until interrupted; the state file exists while the server runs."""
+def serve(
+    store: ProfileStore, directory: Path, port: int, notify: Callable[[str], None], *, browser: bool | None = None,
+) -> None:
+    """Run until interrupted; the state file exists while the server runs.
+
+    ``browser`` opens the UI (True) or prints its address (False); None serves only the API.
+    """
     token = secrets.token_urlsafe(32)
     try:
         server = Server(Api(store, directory), token, port)
@@ -327,6 +391,10 @@ def serve(store: ProfileStore, directory: Path, port: int, notify: Callable[[str
         raise CredentialError(f"Cannot write {state_path(store)}.") from None
     notify(f"vkm serves its API on {server.url} (labels default to {directory}).")
     notify(f"Local apps read the URL and token from {path}. Press Ctrl+C to stop.")
+    if browser is not None:
+        address = f"{server.url}/#token={token}"  # The fragment never reaches the server or its logs.
+        if not browser or not webbrowser.open(address):
+            notify(f"Open the Virtual Key Mapper UI in your browser: {address}")
     def stop(signum, frame) -> None:
         raise KeyboardInterrupt
 

@@ -79,7 +79,8 @@ origin, and for a browser sign-in its identity provider.
 
 - The OS credential vault (Windows Credential Manager, macOS Keychain, Secret Service on Linux).
 - The sign-in callback on `127.0.0.1` with a random port, open only during `login`.
-- `vkm serve` on `127.0.0.1`, on a free port or `--port`, while it runs. It accepts only requests
+- `vkm serve` and `vkm ui` on `127.0.0.1`, on a free port or `--port`, while they run. The page itself
+  loads nothing from other hosts. It accepts only requests
   addressed to `127.0.0.1` or `localhost` that carry the token from `serve.json`, and refuses
   requests from websites. Requests it makes to the gateway are the ones listed above.
 - The dev container relay: a Unix socket inside the container, carried over VS Code's own

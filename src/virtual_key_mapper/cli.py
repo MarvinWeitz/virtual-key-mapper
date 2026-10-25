@@ -481,7 +481,8 @@ def run(context: Context) -> int:
 def serve_api(context: Context) -> None:
     if not 0 <= context.args.port <= 65535:
         raise CredentialError("--port must be between 0 and 65535.")
-    serve(context.store, _directory(context.args), context.args.port, notify)
+    browser = None if context.args.command == "serve" else not context.args.no_browser
+    serve(context.store, _directory(context.args), context.args.port, notify, browser=browser)
 
 
 def setup_tool(context: Context) -> None:
@@ -693,6 +694,11 @@ def parser() -> argparse.ArgumentParser:
     command = commands.add_parser("serve", help="Serve the CLI's JSON documents to local apps on 127.0.0.1 until stopped.")
     command.add_argument("--port", type=int, default=0, help="Port on 127.0.0.1 (default: a free one).")
     command.add_argument("--directory", type=Path, help="Default folder for the labels; otherwise the current directory.")
+    command.set_defaults(handler=serve_api)
+    command = commands.add_parser("ui", help="Open the setup page in your browser; it runs on 127.0.0.1 until stopped.")
+    command.add_argument("--port", type=int, default=0, help="Port on 127.0.0.1 (default: a free one).")
+    command.add_argument("--directory", type=Path, help="Folder the page starts in; otherwise the current directory.")
+    command.add_argument("--no-browser", action="store_true", help="Print the page's address instead of opening it.")
     command.set_defaults(handler=serve_api)
 
     command = commands.add_parser("setup", help="Configure a tool once to use this CLI for credentials and labels.")

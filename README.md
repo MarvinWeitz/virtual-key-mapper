@@ -102,6 +102,11 @@ python -m venv .venv
 Windows policies do), use `python -m virtual_key_mapper` everywhere instead; it accepts the
 same arguments.
 
+Prefer a page to the command line? Run `vkm ui` (or `python -m virtual_key_mapper ui`). It opens a
+setup page in your browser where you add your gateway, sign in, connect your tools and assign the
+labels of your repositories. The page runs on your computer only, until you press Ctrl+C. The same
+steps on the command line:
+
 ```bash
 # 1. Once per machine: a profile for your gateway and your business-unit team, then sign in.
 #    If your organisation publishes its label definitions, pass --rules URL instead of --label.
@@ -317,6 +322,8 @@ terminal it asks for missing required labels and saves the answers as your perso
 vkm serve [--port PORT] [--directory FOLDER]
 ```
 
+`vkm ui` runs the same server and opens the setup page in your browser (`--no-browser` prints its address).
+
 Serves the same JSON documents as the commands on `127.0.0.1` until you stop it with Ctrl+C:
 `/api/token`, `/api/repository` (the labels and request headers of a folder, `repo show --json`),
 `/api/labels`, `/api/labels/KEY/values`, `/api/models`, `/api/status` and `/api/profiles`.
@@ -398,7 +405,7 @@ supported gateway, the headers a proxy must pass, certificates and installation 
 
 `profile add|list|show|use|update`, `login`, `status`, `token [--json]`, `logout`,
 `repo show|bind|unbind|list`, `labels list|values`, `models list [--json]`, `setup claude|codex|opencode`, `run`,
-`shell-init`, `serve`, and `claude guard` (the hook). `vkm COMMAND --help` explains each.
+`shell-init`, `serve`, `ui`, and `claude guard` (the hook). `vkm COMMAND --help` explains each.
 
 ## 📌 Releases
 

@@ -7,6 +7,9 @@ the date.
 
 ## Unreleased
 
+- `vkm ui` opens a setup page in your browser: add your gateway, sign in, connect Claude Code,
+  Codex and OpenCode with a model from the list, and assign the labels of your repositories without
+  the command line. It runs on your computer only, until you stop it.
 - `vkm serve` gives local apps and scripts the same information as the commands over HTTP on
   `127.0.0.1`: a current token, a folder's labels and request headers, the labels and their
   values, the models and the sign-in state. Each start makes a new token that only you can read.

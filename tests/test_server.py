@@ -214,6 +214,32 @@ class ServerTests(unittest.TestCase):
                 self.assertEqual(caught.exception.code, status)
         self.auth.logout.assert_not_called()
 
+    def test_the_page_is_served_without_the_token_but_only_to_its_own_host(self):
+        for path, kind in (("/", "text/html"), ("/app.js", "text/javascript"), ("/app.css", "text/css")):
+            with self.subTest(path=path), DIRECT.open(self.server.url + path, timeout=10) as response:
+                self.assertEqual(response.headers["Content-Type"].split(";")[0], kind)
+                self.assertIn("script-src 'self'", response.headers["Content-Security-Policy"])
+                self.assertEqual(response.headers["X-Frame-Options"], "DENY")
+                self.assertTrue(response.read())
+        request = urllib.request.Request(self.server.url + "/", headers={"Host": "attacker.example"})
+        with self.assertRaises(urllib.error.HTTPError) as caught:
+            DIRECT.open(request, timeout=10)
+        self.assertEqual(caught.exception.code, 403)
+        self.assertEqual(self.get("/index.html", token=None)[0], 401)
+
+    def test_folders_lists_visible_subfolders_and_marks_git_checkouts(self):
+        (self.work / "shop" / ".git").mkdir(parents=True)
+        (self.work / "Billing").mkdir()
+        (self.work / ".hidden").mkdir()
+        (self.work / "notes.txt").write_text("x", encoding="utf-8")
+        result = self.get("/api/folders")[1]["result"]
+        self.assertEqual((result["path"], result["parent"]), (str(self.work), str(self.home)))
+        self.assertEqual(result["folders"], [
+            {"name": "Billing", "path": str(self.work / "Billing"), "git": False},
+            {"name": "shop", "path": str(self.work / "shop"), "git": True},
+        ])
+        self.assertTrue(self.get(f"/api/folders?directory={quote(str(self.work / 'shop'))}")[1]["result"]["git"])
+
     def test_the_state_file_names_url_and_token_and_is_removed_only_by_its_server(self):
         path = write_state(self.store, self.server)
         self.assertEqual(path, self.home / STATE_FILE)
