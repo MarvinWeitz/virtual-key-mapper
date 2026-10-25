@@ -311,6 +311,23 @@ Starts the tool with child-only configuration, without changing your setup; each
 sets that key for that process (`--label KEY=` for no value), the others resolve as usual. In a
 terminal it asks for missing required labels and saves the answers as your personal binding.
 
+### Local apps and scripts
+
+```bash
+vkm serve [--port PORT] [--directory FOLDER]
+```
+
+Serves the same JSON documents as the commands on `127.0.0.1` until you stop it with Ctrl+C:
+`/api/token`, `/api/repository` (the labels and request headers of a folder, `repo show --json`),
+`/api/labels`, `/api/labels/KEY/values`, `/api/models`, `/api/status` and `/api/profiles`.
+Without `directory=FOLDER`, the labels are those of the folder the server started in;
+`label=KEY=VALUE` sets a label for one request, as `--label` does. `profile=NAME` picks a profile.
+
+Every request needs `Authorization: Bearer TOKEN`. A new token is made at each start and written,
+with the URL, to `serve.json` in the configuration folder, which only you can read. Requests to
+another host name or from other websites are refused. Responses are `{"result": ..., "messages": [...]}`,
+or `{"error": "...", "messages": [...]}` with an HTTP error status.
+
 ### GitHub Copilot Chat (VS Code)
 
 Install **Virtual Key Mapper for Copilot Chat** (`cbs-consulting.vkm`) from the Extensions view,
@@ -356,7 +373,7 @@ bindings made inside a container live in the container.
 
 | What | Where |
 | --- | --- |
-| Profiles and their labels, personal label bindings, rules cache, tool state | `%LOCALAPPDATA%\virtual-key-mapper` or `~/.config/virtual-key-mapper` (`--home` or `VKM_HOME` to change) |
+| Profiles and their labels, personal label bindings, rules cache, tool state, the `vkm serve` address and token (`serve.json`, while it runs) | `%LOCALAPPDATA%\virtual-key-mapper` or `~/.config/virtual-key-mapper` (`--home` or `VKM_HOME` to change) |
 | Sign-in (access and refresh token) | the OS credential vault only; never in files |
 | Claude / Codex / OpenCode configuration | each tool's own user configuration, changed only by `setup` |
 
@@ -364,7 +381,7 @@ bindings made inside a container live in the container.
 
 Outbound HTTPS to the gateway (sign-in, renewal and every model request), plus the central rules
 URL if a profile has one; the browser also reaches your identity provider during `login`.
-Nothing listens on the network. The paths and label headers depend on the gateway; for each
+Nothing listens on the network; `vkm serve` listens only on `127.0.0.1`. The paths and label headers depend on the gateway; for each
 supported gateway, the headers a proxy must pass, certificates and installation hosts:
 [docs/network.md](docs/network.md).
 
@@ -372,7 +389,7 @@ supported gateway, the headers a proxy must pass, certificates and installation 
 
 `profile add|list|show|use|update`, `login`, `status`, `token [--json]`, `logout`,
 `repo show|bind|unbind|list`, `labels list|values`, `models list [--json]`, `setup claude|codex|opencode`, `run`,
-`shell-init`, and `claude guard` (the hook). `vkm COMMAND --help` explains each.
+`shell-init`, `serve`, and `claude guard` (the hook). `vkm COMMAND --help` explains each.
 
 ## 📌 Releases
 
