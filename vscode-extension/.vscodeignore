@@ -8,3 +8,5 @@ tsconfig.json
 test-host/**
 .vscode-test/**
 local/**
+AGENTS.md
+CLAUDE.md
