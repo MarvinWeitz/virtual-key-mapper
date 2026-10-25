@@ -7,6 +7,10 @@ the date.
 
 ## Unreleased
 
+- `vkm serve --proxy` lets tools that know nothing about vkm use the gateway: point their base URL
+  at `http://127.0.0.1:47474/openai-chat` (or `openai-responses`, `anthropic-messages`) with the
+  key from `proxy.key`. Each request gets a fresh gateway key and the labels of the request, the
+  `--label` values or the folder; it is refused while a required label has no value.
 - `vkm ui` opens a setup page in your browser: add your gateway, sign in, connect Claude Code,
   Codex and OpenCode with a model from the list, and assign the labels of your repositories without
   the command line. It runs on your computer only, until you stop it.

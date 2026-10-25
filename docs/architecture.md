@@ -61,6 +61,7 @@ for both; the tools and extensions only consume its outputs.
 | `shells.py` | Per-directory shell hooks for environment-driven tools (Codex) |
 | `service.py` | One profile's operations as data (sign-in, labels, repositories), shared by the commands and the local server |
 | `server.py` | `vkm serve` and `vkm ui`: the JSON documents over HTTP on 127.0.0.1, with a token per start |
+| `proxy.py` | `vkm serve --proxy`: forwards model requests to the gateway's endpoint per API, with the key and the labels |
 | `ui/` | The setup page `vkm ui` opens: plain HTML, CSS and JavaScript, no build step; it only calls the server's API |
 | `cli.py` | Commands: arguments, the terminal picker and printing; reaches adapters only through the registry |
 | `vscode-extension/` | Copilot Chat model provider and the remote relay (TypeScript) |

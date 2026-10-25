@@ -344,6 +344,27 @@ with the URL, to `serve.json` in the configuration folder, which only you can re
 another host name or from other websites are refused. Responses are `{"result": ..., "messages": [...]}`,
 or `{"error": "...", "messages": [...]}` with an HTTP error status.
 
+### Any other tool, through the local proxy
+
+```bash
+cd ~/src/some-repo
+vkm serve --proxy [--label KEY=VALUE]... [--port PORT]
+```
+
+For tools and scripts that know nothing about vkm. Set the tool's base URL to
+`http://127.0.0.1:47474/openai-chat` (OpenAI Chat Completions), `…/openai-responses` (OpenAI
+Responses) or `…/anthropic-messages` (Anthropic Messages), and its API key to the contents of
+`proxy.key` in the configuration folder (made once, readable only by you). The proxy replaces that
+key with your current gateway key and adds the labels:
+
+1. labels the request sends itself, as `X-Vkm-Label: customer=acme, project=webshop`;
+2. otherwise the `--label` values given at start;
+3. otherwise the labels of the folder in the request's `X-Vkm-Directory` header, or of the folder the
+   proxy started in. They are checked on every request, so a new `repo bind` applies at once.
+
+A request is refused while a required label has no value. The proxy runs until you stop it; start it
+again after changing profiles. Requests from websites are refused.
+
 ### GitHub Copilot Chat (VS Code)
 
 Install **Virtual Key Mapper for Copilot Chat** (`cbs-consulting.vkm`) from the Extensions view,

@@ -22,6 +22,7 @@ from .integrations.common import (
 from .registry import AUTH, GATEWAYS, INTEGRATIONS, auth_for, gateway_for, gateway_outputs
 from .repositories import RepositoryStore, find_checkout
 from .resolve import load_config, missing_error
+from .proxy import PROXY_PORT, Proxy, proxy_key
 from .server import serve
 from .service import CLAUDE, SOURCE_OPTIONS, Service, add_profile, check_profile, checkout_origin, profile_document
 from .shells import SHELLS, assignments, hook, pwsh_loader, without_daemon
@@ -479,10 +480,22 @@ def run(context: Context) -> int:
 
 
 def serve_api(context: Context) -> None:
-    if not 0 <= context.args.port <= 65535:
+    args = context.args
+    proxy = None
+    directory = _directory(args)
+    port = args.port
+    if getattr(args, "proxy", False):
+        # The labels given at start are checked now; each request may still override them.
+        labels = _label_values(context, args.label, "explicit")
+        proxy = Proxy(context.store, directory, proxy_key(context.store), profile=args.profile, labels=labels)
+        port = PROXY_PORT if port is None else port
+    elif args.label:
+        raise CredentialError("--label sets the proxy's labels; add --proxy.")
+    port = 0 if port is None else port
+    if not 0 <= port <= 65535:
         raise CredentialError("--port must be between 0 and 65535.")
-    browser = None if context.args.command == "serve" else not context.args.no_browser
-    serve(context.store, _directory(context.args), context.args.port, notify, browser=browser)
+    browser = None if args.command == "serve" else not args.no_browser
+    serve(context.store, directory, port, notify, browser=browser, proxy=proxy)
 
 
 def setup_tool(context: Context) -> None:
@@ -692,11 +705,19 @@ def parser() -> argparse.ArgumentParser:
     command.set_defaults(handler=run)
 
     command = commands.add_parser("serve", help="Serve the CLI's JSON documents to local apps on 127.0.0.1 until stopped.")
-    command.add_argument("--port", type=int, default=0, help="Port on 127.0.0.1 (default: a free one).")
+    command.add_argument(
+        "--port", type=int, help=f"Port on 127.0.0.1 (default: a free one; with --proxy {PROXY_PORT}, so tools keep one address).",
+    )
     command.add_argument("--directory", type=Path, help="Default folder for the labels; otherwise the current directory.")
+    command.add_argument(
+        "--proxy", action="store_true",
+        help="Also forward model requests from tools that know nothing about vkm, adding the key and the labels.",
+    )
+    _profile_option(command)
+    _label_option(command, "With --proxy: a label value for every request (KEY= for no value); requests may override it.")
     command.set_defaults(handler=serve_api)
     command = commands.add_parser("ui", help="Open the setup page in your browser; it runs on 127.0.0.1 until stopped.")
-    command.add_argument("--port", type=int, default=0, help="Port on 127.0.0.1 (default: a free one).")
+    command.add_argument("--port", type=int, help="Port on 127.0.0.1 (default: a free one).")
     command.add_argument("--directory", type=Path, help="Folder the page starts in; otherwise the current directory.")
     command.add_argument("--no-browser", action="store_true", help="Print the page's address instead of opening it.")
     command.set_defaults(handler=serve_api)

@@ -26,6 +26,7 @@ from . import __version__
 from .errors import CredentialError
 from .labels import definitions_from_dict
 from .profiles import Profile, ProfileStore, atomic_write_text
+from .proxy import PREFIXES, Proxy
 from .repositories import find_checkout
 from .registry import INTEGRATIONS
 from .service import Service, add_profile, profile_document
@@ -232,9 +233,10 @@ def _labels(query: dict[str, list[str]]) -> dict[str, str]:
 class Server(ThreadingHTTPServer):
     daemon_threads = True
 
-    def __init__(self, api: Api, token: str, port: int = 0) -> None:
+    def __init__(self, api: Api, token: str, port: int = 0, proxy: Proxy | None = None) -> None:
         self.api = api
         self.token = token
+        self.proxy = proxy
         super().__init__((HOST, port), Handler)
 
     @property
@@ -263,12 +265,25 @@ class Handler(BaseHTTPRequestHandler):
     def do_POST(self) -> None:  # noqa: N802 - the base class's name.
         self.answer("POST")
 
+    def do_HEAD(self) -> None:  # noqa: N802 - the base class's name.
+        self.answer("HEAD")
+
     def refuse(self) -> None:
         self.reply(405, {"error": "Only GET and POST requests are accepted.", "messages": []})
 
     do_PUT = do_PATCH = do_DELETE = do_OPTIONS = refuse
 
     def answer(self, method: str) -> None:
+        prefix = urlsplit(self.path).path.lstrip("/").partition("/")[0]
+        if self.server.proxy is not None and prefix in PREFIXES:
+            if self.headers.get("Host") not in self.server.origins():
+                self.reply(403, {"error": "Requests must be addressed to 127.0.0.1 or localhost with this server's port.", "messages": []})
+            else:
+                self.server.proxy.handle(self, method)
+            return
+        if method == "HEAD":
+            self.refuse()
+            return
         if method == "GET" and urlsplit(self.path).path in STATIC:
             self.static(urlsplit(self.path).path)
             return
@@ -339,7 +354,10 @@ class Handler(BaseHTTPRequestHandler):
             raise ApiError(401, f"Send 'Authorization: Bearer <token>' with the token from {STATE_FILE}.")
 
     def reply(self, status: int, value: dict) -> None:
-        body = json.dumps(value).encode()
+        try:
+            body = json.dumps(value).encode()
+        except (TypeError, ValueError):
+            status, body = 500, json.dumps({"error": "The answer could not be encoded.", "messages": []}).encode()
         self.send_response(status)
         self.send_header("Content-Type", "application/json; charset=utf-8")
         self.send_header("Content-Length", str(len(body)))
@@ -374,6 +392,7 @@ def remove_state(store: ProfileStore, token: str) -> None:
 
 def serve(
     store: ProfileStore, directory: Path, port: int, notify: Callable[[str], None], *, browser: bool | None = None,
+    proxy: Proxy | None = None,
 ) -> None:
     """Run until interrupted; the state file exists while the server runs.
 
@@ -381,7 +400,7 @@ def serve(
     """
     token = secrets.token_urlsafe(32)
     try:
-        server = Server(Api(store, directory), token, port)
+        server = Server(Api(store, directory), token, port, proxy)
     except OSError as error:
         raise CredentialError(f"Cannot listen on {HOST}:{port}: {error.strerror or error}.") from None
     try:
@@ -391,6 +410,8 @@ def serve(
         raise CredentialError(f"Cannot write {state_path(store)}.") from None
     notify(f"vkm serves its API on {server.url} (labels default to {directory}).")
     notify(f"Local apps read the URL and token from {path}. Press Ctrl+C to stop.")
+    if proxy is not None:
+        notify(f"Proxy for tools: base URL {server.url}/<api>, with <api> one of {', '.join(PREFIXES)}; API key from {store.home / 'proxy.key'}.")
     if browser is not None:
         address = f"{server.url}/#token={token}"  # The fragment never reaches the server or its logs.
         if not browser or not webbrowser.open(address):

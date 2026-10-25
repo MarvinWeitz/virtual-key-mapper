@@ -56,6 +56,9 @@ corresponding parts, and before a release:
 - **Setup page** (CI checks the server, not a browser): `vkm ui` opens the page; adding a profile, signing
   in, connecting a tool with a model from the list and saving labels for a repository (personal and
   `.vkm`) work, in light and dark mode, and the address bar no longer shows the key after loading.
+- **Proxy with a real gateway** (CI uses a fake gateway): with `vkm serve --proxy` in a repository with
+  labels, an OpenAI SDK or `curl` call to `http://127.0.0.1:47474/openai-chat/chat/completions` with the
+  key from `proxy.key` answers, streams, and shows the labels in the gateway's spend logs.
 - **KWallet** (CI uses GNOME Keyring): `vkm login`, a renewal and `vkm logout` on a KDE desktop.
 - **Claude Code extension**: after `setup claude` and `claudeCode.disableLoginPrompt`, a new conversation
   works without a Claude login; a repository with a missing required label is blocked with the guard's
