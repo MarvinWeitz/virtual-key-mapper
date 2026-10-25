@@ -315,6 +315,19 @@ class ProfileStore:
             self._write(data)
             return profile
 
+    def remove(self, name: str) -> bool:
+        """Delete a profile; True when it was the default, which leaves no default."""
+        with self.locked():
+            data = self._read()
+            if name not in data["profiles"]:
+                raise CredentialError("Unknown profile; use 'profile list'.")
+            del data["profiles"][name]
+            was_default = data["active"] == name
+            if was_default:
+                data["active"] = None
+            self._write(data)
+            return was_default
+
     def select(self, name: str) -> None:
         with self.locked():
             data = self._read()

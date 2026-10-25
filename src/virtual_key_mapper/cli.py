@@ -243,6 +243,14 @@ def profile_show(context: Context) -> None:
         notify(notice)
 
 
+def profile_remove(context: Context) -> None:
+    context.profile_name = context.args.name
+    was_default = context.remove_profile()
+    print(f"Removed profile '{context.args.name}' and its sign-in.")
+    if was_default:
+        notify("There is no default profile now; choose one with 'vkm profile use NAME'.")
+
+
 def profile_use(context: Context) -> None:
     context.store.select(context.args.name)
     print(f"Selected profile '{context.args.name}'. Running agents are unchanged.")
@@ -608,6 +616,9 @@ def parser() -> argparse.ArgumentParser:
     use = profile_actions.add_parser("use", help="Select the default profile for later commands.")
     use.add_argument("name")
     use.set_defaults(handler=profile_use)
+    remove = profile_actions.add_parser("remove", help="Sign out of a profile and delete it.")
+    remove.add_argument("name")
+    remove.set_defaults(handler=profile_remove)
 
     command = commands.add_parser("login", help="Sign in with the profile's sign-in kind, e.g. SSO in a browser.")
     _profile_option(command)

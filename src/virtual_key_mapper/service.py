@@ -164,6 +164,25 @@ class Service:
     def logout(self) -> None:
         self.auth.logout(self.notify)
 
+    def remove_profile(self) -> bool:
+        """Sign out of the profile and delete it; True when it was the default."""
+        active, profiles = self.store.list()
+        if (self.profile_name or active) not in {profile.name for profile in profiles}:
+            raise CredentialError("Unknown profile; use 'profile list'.")
+        name = self.profile.name
+        self.auth.forget(self.notify)
+        was_default = self.store.remove(name)
+        self.notify(f"Tools set up with '{name}' no longer get keys; set them up again with another profile.")
+        return was_default
+
+    def update_profile(self, change: Callable[[Profile], Profile]) -> Profile:
+        """Change the profile's label rules, labels or outputs after checking the result; the sign-in stays."""
+        check_profile(self.store, change(self.profile), self.notify, self.token)
+        profile = self.store.update(self.profile.name, change)
+        for name in ("profile", "auth", "gateway", "labels"):
+            self.__dict__.pop(name, None)
+        return profile
+
     def token_document(self) -> dict:
         """``vkm token --json``: a current access token, renewed if needed."""
         credential = self.credential()

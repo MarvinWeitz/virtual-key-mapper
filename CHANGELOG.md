@@ -7,6 +7,9 @@ the date.
 
 ## Unreleased
 
+- `vkm profile remove NAME` signs out of a profile and deletes it. The setup page can delete a
+  profile too, and edit its labels (description, values to choose from, required) and its label
+  rules under "Profile settings".
 - `vkm serve --proxy` lets tools that know nothing about vkm use the gateway: point their base URL
   at `http://127.0.0.1:47474/openai-chat` (or `openai-responses`, `anthropic-messages`) with the
   key from `proxy.key`. Each request gets a fresh gateway key and the labels of the request, the

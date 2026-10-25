@@ -65,6 +65,9 @@ class FixedKeyAuth:
     def logout(self, notify):
         pass
 
+    def forget(self, notify):
+        pass
+
     def status(self):
         return {"profile": self.profile.name, "state": "ready"}
 

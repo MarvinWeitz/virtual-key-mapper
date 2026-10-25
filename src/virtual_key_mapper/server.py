@@ -82,6 +82,13 @@ class Api:
             name = _field(body, "name", str, required=True)
             self.store.select(name)
             return {"default": name}
+        if route == ("POST", "api", "profiles", "update"):
+            service = self.services(self.store, _field(body, "name", str, required=True), notify=messages.append)
+            return profile_document(service.update_profile(_change(body)))
+        if route == ("POST", "api", "profiles", "remove"):
+            name = _field(body, "name", str, required=True)
+            was_default = self.services(self.store, name, notify=messages.append).remove_profile()
+            return {"removed": name, "was_default": was_default}
         if route == ("GET", "api", "tools"):
             return sorted(INTEGRATIONS)
         service = self.service(query, messages)
@@ -167,6 +174,7 @@ class Api:
 
 _ROUTES = {
     ("GET", "api"), ("GET", "api", "profiles"), ("POST", "api", "profiles"), ("POST", "api", "profiles", "default"),
+    ("POST", "api", "profiles", "update"), ("POST", "api", "profiles", "remove"),
     ("GET", "api", "tools"), ("GET", "api", "status"), ("POST", "api", "login"), ("POST", "api", "logout"),
     ("GET", "api", "token"), ("GET", "api", "models"), ("GET", "api", "labels"), ("GET", "api", "repository"),
     ("GET", "api", "repositories"), ("GET", "api", "folders"), ("POST", "api", "repository", "bind"), ("POST", "api", "repository", "unbind"),
@@ -208,6 +216,30 @@ def _profile(body: dict) -> Profile:
         labels, outputs = definitions_from_dict(definitions, "definitions")
         profile = dataclasses.replace(profile, labels=labels, outputs=outputs)
     return profile
+
+
+def _change(body: dict) -> Callable[[Profile], Profile]:
+    """'profile update' from a JSON body: ``rules`` (null stops using them), and the ``labels`` or ``outputs`` in ``definitions``."""
+    has_rules = "rules" in body
+    rules = _field(body, "rules", str)
+    definitions = _field(body, "definitions", dict)
+    if not has_rules and definitions is None:
+        raise ApiError(400, "Nothing to change: give 'rules' or 'definitions'.")
+    if definitions is not None:
+        labels, outputs = definitions_from_dict(definitions, "definitions")
+
+    def change(profile: Profile) -> Profile:
+        if has_rules:
+            profile = dataclasses.replace(profile, rules=rules)
+        if definitions is not None:
+            # What the body leaves out stays as it is, so the page can edit the labels alone.
+            profile = dataclasses.replace(
+                profile, labels=labels if "labels" in definitions else profile.labels,
+                outputs=outputs if "outputs" in definitions else profile.outputs,
+            )
+        return profile
+
+    return change
 
 
 def _one(query: dict[str, list[str]], name: str) -> str | None:
