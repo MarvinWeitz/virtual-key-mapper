@@ -58,6 +58,10 @@ Never paste a token, a refresh token or a `proxy.key` into an issue. `vkm status
    documentation fix, gets the label "no changelog" instead.
 7. Open a pull request against `main` and fill in the template. It needs the checks **Test
    features** and **Changelog entry**.
+8. Once the checks pass and the pull request is approved, choose **Merge when ready**. Pull
+   requests are merged through a merge queue: GitHub tests each one on top of `main` and the
+   pull requests queued ahead of it, and merges it when the checks pass there too. You don't have
+   to update your branch with `main` first.
 
 Do not change the version: it is raised only when a release is prepared.
 
