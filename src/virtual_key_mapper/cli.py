@@ -5,14 +5,14 @@ import os
 import re
 import sys
 from pathlib import Path
-from typing import Callable, Sequence
+from typing import Sequence
 
 from . import __version__
 from .adapters import IntegrationContext
 from .errors import CredentialError
 from .labels import (
     MAX_VALUE, NO_LABELS_NOTICE, SOURCES, Attribution, Choice, Label, LabelConfig, LabelDefinition, MissingLabelsError,
-    OutputOverride, definitions_from_dict, env_name, validate_key, validate_value,
+    OutputOverride, definitions_from_dict, validate_key, validate_value,
 )
 from .profiles import Profile, ProfileStore, default_home, with_label, with_output, without_label
 from .integrations.common import (
@@ -21,10 +21,9 @@ from .integrations.common import (
 )
 from .registry import AUTH, GATEWAYS, INTEGRATIONS, auth_for, gateway_for, gateway_outputs
 from .repositories import RepositoryStore, find_checkout
-from .resolve import label_config, load_config, missing_error
-from .rules import RulesLoader
+from .resolve import load_config, missing_error
 from .server import serve
-from .service import CLAUDE, SOURCE_OPTIONS, Service, checkout_origin, profile_document
+from .service import CLAUDE, SOURCE_OPTIONS, Service, add_profile, check_profile, checkout_origin, profile_document
 from .shells import SHELLS, assignments, hook, pwsh_loader, without_daemon
 from .storage import NativeKeyring
 
@@ -184,31 +183,6 @@ def _definitions(args: argparse.Namespace, profile: Profile) -> Profile:
     return profile
 
 
-def _check_profile(store: ProfileStore, profile: Profile, token: Callable[[], str] | None) -> None:
-    """Refuse what can be checked before use: the profile with its adapter, and with the rules when they can be read."""
-    outputs = gateway_outputs(profile.gateway_type)
-    if profile.rules is None:
-        label_config(profile, outputs, None)
-        return
-    try:
-        rules = RulesLoader(store, profile, token)()
-    except CredentialError as error:
-        notify(f"The label rules could not be read to check the profile against them: {error}")
-        # Still refuse what is wrong whatever the rules define, e.g. a required profile label that reaches no output.
-        LabelConfig.build(outputs, profile_labels=profile.labels, profile_outputs=profile.outputs, unread_central=True)
-        return
-    if rules is not None:
-        central = {env_name(definition.key): definition.key for definition in rules.labels}
-        for definition in profile.labels:
-            if env_name(definition.key) in central:
-                raise CredentialError(
-                    f"The label rules define '{central[env_name(definition.key)]}', so the profile cannot define "
-                    f"'{definition.key}'; remove it with --no-label {definition.key}."
-                )
-    for notice in label_config(profile, outputs, rules).notices:
-        notify(notice)
-
-
 def profile_add(context: Context) -> None:
     args = context.args
     # Each auth kind validates its own settings and rejects ones it does not use.
@@ -218,8 +192,7 @@ def profile_add(context: Context) -> None:
     profile = _definitions(args, Profile(
         args.name, args.gateway, settings, args.gateway_type, args.auth, args.allow_insecure_localhost, args.rules,
     ))
-    _check_profile(context.store, profile, None)  # A new profile has no sign-in yet.
-    context.store.add(profile)
+    add_profile(context.store, profile, notify)
     print(f"Added profile '{profile.name}' ({profile.gateway_type} gateway, {profile.auth_type} sign-in).")
 
 
@@ -239,7 +212,7 @@ def profile_update(context: Context) -> None:
             "Nothing to change: pass --rules, --no-rules, --label, --no-label, --output, --output-off, --output-default "
             "or --definitions."
         )
-    _check_profile(context.store, changed, lambda: auth_for(changed, context.store, NativeKeyring).credential().secret)
+    check_profile(context.store, changed, notify, lambda: auth_for(changed, context.store, NativeKeyring).credential().secret)
     profile = context.store.update(args.name, change)
     rules = json.dumps(profile.rules) if profile.rules is not None else "no central rules"
     labels = ", ".join(definition.key for definition in profile.labels) or "none"
@@ -275,10 +248,7 @@ def profile_use(context: Context) -> None:
 
 
 def login(context: Context) -> None:
-    timeout = context.args.timeout
-    if not 1 <= timeout <= 900:
-        raise CredentialError("--timeout must be between 1 and 900 seconds.")
-    credential = context.auth.login(notify, no_browser=context.args.no_browser, timeout=timeout)
+    credential = context.login(no_browser=context.args.no_browser, timeout=context.args.timeout)
     print(f"Signed in as {credential.user} for '{context.profile.name}'.")
 
 
@@ -297,7 +267,7 @@ def status(context: Context) -> None:
 
 
 def logout(context: Context) -> None:
-    context.auth.logout(notify)
+    context.logout()
     print(f"Logged out of '{context.profile.name}'. Previously issued access tokens expire naturally.")
 
 
@@ -428,7 +398,7 @@ def repo_show(context: Context) -> None:
 
 
 def repo_list(context: Context) -> None:
-    print(json.dumps(RepositoryStore(context.store).list(context.profile.gateway), indent=2))
+    print(json.dumps(context.bindings(), indent=2))
 
 
 def repo_bind(context: Context) -> None:
@@ -516,13 +486,10 @@ def serve_api(context: Context) -> None:
 
 def setup_tool(context: Context) -> None:
     args = context.args
-    integration = INTEGRATIONS[args.tool]
     if args.remove:
-        notes = integration.remove(context.integration(labels=False))
+        notes = context.remove(args.tool)
     else:
-        # Fail now, not later in the tool, when the profile is not signed in; some tools list models with it.
-        token = context.token()
-        notes = integration.setup(context.integration(token), args.model, args.replace)
+        notes = context.setup(args.tool, args.model, args.replace)
         context.notices()
     for note in notes:
         print(note)

@@ -2,9 +2,11 @@
 
 Every request needs the random token of this start, which only the user can read from ``serve.json`` in the
 configuration folder, and the server's own ``Host``; browsers on other sites are refused by ``Origin``.
-Responses are ``{"result": ..., "messages": [...]}`` or ``{"error": ..., "messages": [...]}``.
+Reads are GET; changes are POST with a JSON object body. Responses are ``{"result": ..., "messages": [...]}``
+or ``{"error": ..., "messages": [...]}``.
 """
 
+import dataclasses
 import hmac
 import json
 import os
@@ -19,13 +21,16 @@ from urllib.parse import parse_qs, unquote, urlsplit
 
 from . import __version__
 from .errors import CredentialError
-from .profiles import ProfileStore, atomic_write_text
+from .labels import definitions_from_dict
+from .profiles import Profile, ProfileStore, atomic_write_text
 from .repositories import find_checkout
-from .service import Service, profile_document
+from .registry import INTEGRATIONS
+from .service import Service, add_profile, profile_document
 
 HOST = "127.0.0.1"
 STATE_FILE = "serve.json"
 _MAX_QUERY = 8192
+_MAX_BODY = 65536
 
 
 class ApiError(Exception):
@@ -45,11 +50,12 @@ class Api:
     def service(self, query: dict[str, list[str]], messages: list[str]) -> Service:
         return self.services(self.store, _one(query, "profile"), notify=messages.append)
 
-    def handle(self, path: str, query: dict[str, list[str]], messages: list[str]):
+    def handle(self, method: str, path: str, query: dict[str, list[str]], body: dict, messages: list[str]):
         parts = [unquote(part) for part in path.strip("/").split("/")]
-        if parts == ["api"]:
+        route = (method, *parts)
+        if route == ("GET", "api"):
             return {"version": __version__, "directory": str(self.directory)}
-        if parts == ["api", "profiles"]:
+        if route == ("GET", "api", "profiles"):
             active, profiles = self.store.list()
             documents = []
             for profile in profiles:
@@ -58,25 +64,66 @@ class Api:
                 except CredentialError as error:
                     messages.append(f"Profile '{profile.name}' cannot be used: {error}")
             return {"default": active, "profiles": documents}
+        if route == ("POST", "api", "profiles"):
+            profile = _profile(body)
+            add_profile(self.store, profile, messages.append)
+            return profile_document(profile)
+        if route == ("POST", "api", "profiles", "default"):
+            name = _field(body, "name", str, required=True)
+            self.store.select(name)
+            return {"default": name}
+        if route == ("GET", "api", "tools"):
+            return sorted(INTEGRATIONS)
         service = self.service(query, messages)
-        if parts == ["api", "status"]:
+        if route == ("GET", "api", "status"):
             return service.status()
-        if parts == ["api", "token"]:
+        if route == ("POST", "api", "login"):
+            timeout = _field(body, "timeout", int)
+            credential = service.login(timeout=180 if timeout is None else timeout)
+            return {"profile": service.profile.name, "user": credential.user}
+        if route == ("POST", "api", "logout"):
+            service.logout()
+            return {"profile": service.profile.name}
+        if route == ("GET", "api", "token"):
             return service.token_document()
-        if parts == ["api", "models"]:
+        if route == ("GET", "api", "models"):
             return [{"id": model} for model in service.models()]
-        if parts == ["api", "labels"]:
+        if len(parts) == 3 and route[:3] == ("POST", "api", "setup"):
+            return {"notes": service.setup(parts[2], _field(body, "model", str), _field(body, "replace", bool) or False)}
+        if len(parts) == 4 and route[:3] == ("POST", "api", "setup") and parts[3] == "remove":
+            return {"notes": service.remove(parts[2])}
+        if route == ("GET", "api", "labels"):
             return service.definitions()
-        if len(parts) == 4 and parts[:2] == ["api", "labels"] and parts[3] == "values":
+        if len(parts) == 4 and route[:3] == ("GET", "api", "labels") and parts[3] == "values":
             return service.values_document(parts[2])
-        if parts == ["api", "repository"]:
-            directory = self.folder(query)
+        if route == ("GET", "api", "repository"):
+            directory = self.folder(_one(query, "directory"))
             explicit = service.explicit(_labels(query), "explicit")
             return service.repository(directory, find_checkout(directory), explicit)
+        if route == ("GET", "api", "repositories"):
+            return service.bindings()
+        if route == ("POST", "api", "repository", "bind"):
+            directory = self.folder(_field(body, "directory", str))
+            shared = _field(body, "shared", bool) or False
+            labels = _field(body, "labels", dict, required=True)
+            if not labels or not all(isinstance(value, str) for value in labels.values()):
+                raise ApiError(400, "'labels' must be an object of label values, such as {\"customer\": \"acme\"}.")
+            checked = service.explicit(labels, "file" if shared else "local")
+            binding = service.bind(
+                directory, find_checkout(directory), checked, shared=shared, replace=_field(body, "replace", bool) or False,
+            )
+            return dataclasses.asdict(binding)
+        if route == ("POST", "api", "repository", "unbind"):
+            directory = self.folder(_field(body, "directory", str))
+            keys = _field(body, "keys", list)
+            if keys is not None and not all(isinstance(key, str) for key in keys):
+                raise ApiError(400, "'keys' must be a list of label keys.")
+            return {"repository": service.unbind(directory, find_checkout(directory), keys)}
+        if any(other != method and (other, *parts) in _ROUTES for other in ("GET", "POST")):
+            raise ApiError(405, f"{method} is not accepted for {path}.")
         raise ApiError(404, f"No such endpoint: {path}")
 
-    def folder(self, query: dict[str, list[str]]) -> Path:
-        directory = _one(query, "directory")
+    def folder(self, directory: str | None) -> Path:
         try:
             path = Path(directory).expanduser().resolve() if directory else self.directory
         except (OSError, RuntimeError, ValueError):
@@ -84,6 +131,44 @@ class Api:
         if not path.is_dir():
             raise ApiError(400, f"{path} is not a folder.")
         return path
+
+
+_ROUTES = {
+    ("GET", "api"), ("GET", "api", "profiles"), ("POST", "api", "profiles"), ("POST", "api", "profiles", "default"),
+    ("GET", "api", "tools"), ("GET", "api", "status"), ("POST", "api", "login"), ("POST", "api", "logout"),
+    ("GET", "api", "token"), ("GET", "api", "models"), ("GET", "api", "labels"), ("GET", "api", "repository"),
+    ("GET", "api", "repositories"), ("POST", "api", "repository", "bind"), ("POST", "api", "repository", "unbind"),
+}
+
+
+def _field(body: dict, name: str, kind: type, *, required: bool = False):
+    """One value of a JSON body, of the given type; None when absent."""
+    value = body.get(name)
+    if value is None:
+        if required:
+            raise ApiError(400, f"'{name}' is required.")
+        return None
+    if not isinstance(value, kind) or (kind is int and isinstance(value, bool)):
+        raise ApiError(400, f"'{name}' must be {_KINDS[kind]}.")
+    return value
+
+
+_KINDS = {str: "a string", int: "a whole number", bool: "true or false", dict: "an object", list: "a list"}
+
+
+def _profile(body: dict) -> Profile:
+    """A new profile from the same settings as 'profile add'; ``definitions`` is its labels and outputs."""
+    settings = {name: value for name in ("team_id", "host_profile") if (value := _field(body, name, str)) is not None}
+    profile = Profile(
+        _field(body, "name", str, required=True), _field(body, "gateway", str, required=True), settings,
+        _field(body, "gateway_type", str) or "litellm", _field(body, "auth", str) or "litellm-sso",
+        _field(body, "allow_insecure_localhost", bool) or False, _field(body, "rules", str),
+    )
+    definitions = _field(body, "definitions", dict)
+    if definitions is not None:
+        labels, outputs = definitions_from_dict(definitions, "definitions")
+        profile = dataclasses.replace(profile, labels=labels, outputs=outputs)
+    return profile
 
 
 def _one(query: dict[str, list[str]], name: str) -> str | None:
@@ -135,6 +220,17 @@ class Handler(BaseHTTPRequestHandler):
         pass  # Requests are not logged; the terminal shows only start, stop and errors.
 
     def do_GET(self) -> None:  # noqa: N802 - the base class's name.
+        self.answer("GET")
+
+    def do_POST(self) -> None:  # noqa: N802 - the base class's name.
+        self.answer("POST")
+
+    def refuse(self) -> None:
+        self.reply(405, {"error": "Only GET and POST requests are accepted.", "messages": []})
+
+    do_PUT = do_PATCH = do_DELETE = do_OPTIONS = refuse
+
+    def answer(self, method: str) -> None:
         messages: list[str] = []
         try:
             self.check()
@@ -142,7 +238,8 @@ class Handler(BaseHTTPRequestHandler):
             if len(target.query) > _MAX_QUERY:
                 raise ApiError(414, "The query is too long.")
             query = parse_qs(target.query, keep_blank_values=True, strict_parsing=False)
-            result = self.server.api.handle(target.path, query, messages)
+            body = self.body() if method == "POST" else {}
+            result = self.server.api.handle(method, target.path, query, body, messages)
         except ApiError as error:
             self.reply(error.status, {"error": str(error), "messages": messages})
         except CredentialError as error:
@@ -153,10 +250,23 @@ class Handler(BaseHTTPRequestHandler):
         else:
             self.reply(200, {"result": result, "messages": messages})
 
-    def refuse(self) -> None:
-        self.reply(405, {"error": "Only GET requests are accepted.", "messages": []})
-
-    do_POST = do_PUT = do_PATCH = do_DELETE = do_OPTIONS = refuse
+    def body(self) -> dict:
+        """A JSON object; the content type also keeps browsers from sending it from a plain form."""
+        if (self.headers.get("Content-Type") or "").split(";")[0].strip().lower() != "application/json":
+            raise ApiError(415, "Send the body as Content-Type: application/json.")
+        try:
+            length = int(self.headers.get("Content-Length") or 0)
+        except ValueError:
+            raise ApiError(400, "Invalid Content-Length.") from None
+        if not 0 <= length <= _MAX_BODY:
+            raise ApiError(413, "The body is too large.")
+        try:
+            value = json.loads(self.rfile.read(length) or b"{}")
+        except (ValueError, RecursionError):
+            raise ApiError(400, "The body is not valid JSON.") from None
+        if not isinstance(value, dict):
+            raise ApiError(400, "The body must be a JSON object.")
+        return value
 
     def check(self) -> None:
         """Refuse requests to another host name (DNS rebinding), from other sites, or without this start's token."""

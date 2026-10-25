@@ -323,6 +323,15 @@ Serves the same JSON documents as the commands on `127.0.0.1` until you stop it 
 Without `directory=FOLDER`, the labels are those of the folder the server started in;
 `label=KEY=VALUE` sets a label for one request, as `--label` does. `profile=NAME` picks a profile.
 
+Changes are `POST` requests with a JSON body (`Content-Type: application/json`), the same as the
+commands: `/api/profiles` (`profile add`, with `name`, `gateway`, `team_id`, `rules` and
+`definitions`), `/api/profiles/default` (`profile use`), `/api/login` and `/api/logout`,
+`/api/setup/TOOL` (with `model` and `replace`) and `/api/setup/TOOL/remove`,
+`/api/repository/bind` (with `labels`, `directory`, `shared` and `replace`) and
+`/api/repository/unbind` (with `keys`). `GET /api/tools` and `GET /api/repositories` list the
+tools and your personal bindings. `/api/login` opens the browser on this computer and answers when
+the sign-in is done.
+
 Every request needs `Authorization: Bearer TOKEN`. A new token is made at each start and written,
 with the URL, to `serve.json` in the configuration folder, which only you can read. Requests to
 another host name or from other websites are refused. Responses are `{"result": ..., "messages": [...]}`,

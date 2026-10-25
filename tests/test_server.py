@@ -14,6 +14,7 @@ from virtual_key_mapper import __version__
 from virtual_key_mapper.adapters import Credential
 from virtual_key_mapper.labels import Choice, LabelDefinition
 from virtual_key_mapper.profiles import Profile, ProfileStore
+from virtual_key_mapper.repositories import Checkout
 from virtual_key_mapper.server import STATE_FILE, Api, Server, remove_state, write_state
 from virtual_key_mapper.service import Service
 
@@ -53,8 +54,11 @@ class ServerTests(unittest.TestCase):
         self.addCleanup(self.server.server_close)
         self.addCleanup(self.server.shutdown)
 
-    def get(self, path, *, token=TOKEN, method="GET", **headers):
-        request = urllib.request.Request(self.server.url + path, method=method)
+    def get(self, path, *, token=TOKEN, method="GET", body=None, **headers):
+        data = None if body is None else json.dumps(body).encode()
+        request = urllib.request.Request(self.server.url + path, data=data, method=method)
+        if body is not None:
+            request.add_header("Content-Type", "application/json")
         if token is not None:
             request.add_header("Authorization", f"Bearer {token}")
         for name, value in headers.items():
@@ -74,7 +78,9 @@ class ServerTests(unittest.TestCase):
             ({"token": "wrong"}, 401),
             ({"Host": f"attacker.example:{self.server.port}"}, 403),
             ({"Origin": "https://attacker.example"}, 403),
-            ({"method": "POST"}, 405),
+            ({"method": "POST"}, 415),
+            ({"method": "POST", "body": {}}, 405),
+            ({"method": "PUT"}, 405),
             ({"method": "OPTIONS"}, 405),
         ):
             with self.subTest(kwargs=kwargs):
@@ -127,6 +133,86 @@ class ServerTests(unittest.TestCase):
                 code, body = self.get(path)
                 self.assertEqual(code, status)
                 self.assertIn(message, body["error"])
+
+    def post(self, path, body):
+        return self.get(path, method="POST", body=body)
+
+    def test_profiles_can_be_added_and_selected(self):
+        code, body = self.post("/api/profiles", {
+            "name": "second", "gateway": "https://other.example", "team_id": "t2",
+            "definitions": {"labels": [{"key": "customer", "required": True}]},
+        })
+        self.assertEqual((code, body["result"]["name"], body["result"]["labels"][0]["key"]), (200, "second", "customer"))
+        self.assertEqual(self.store.get("second").gateway, "https://other.example")
+        self.assertEqual(self.post("/api/profiles/default", {"name": "second"})[1]["result"], {"default": "second"})
+        self.assertEqual(self.store.list()[0], "second")
+        for request, message in (
+            ({"name": "second", "gateway": "https://other.example", "team_id": "t"}, "exists"),
+            ({"name": "third"}, "'gateway' is required"),
+            ({"name": "third", "gateway": 5}, "'gateway' must be a string"),
+        ):
+            with self.subTest(request=request):
+                code, body = self.post("/api/profiles", request)
+                self.assertEqual(code, 400)
+                self.assertIn(message, body["error"])
+
+    def test_sign_in_and_out_go_through_the_profiles_sign_in(self):
+        self.auth.login.return_value = Credential("secret", None, "dev@example.com")
+        self.assertEqual(self.post("/api/login", {"timeout": 30})[1]["result"], {"profile": "consulting", "user": "dev@example.com"})
+        self.assertEqual(self.auth.login.call_args.kwargs, {"no_browser": False, "timeout": 30})
+        self.assertEqual(self.post("/api/login", {"timeout": 0})[0], 400)
+        self.assertEqual(self.post("/api/logout", {})[1]["result"], {"profile": "consulting"})
+        self.auth.logout.assert_called_once()
+
+    def test_tools_are_set_up_and_removed_through_their_integration(self):
+        self.assertIn("claude", self.get("/api/tools")[1]["result"])
+        integration = MagicMock()
+        integration.setup.return_value = ["Configured."]
+        integration.remove.return_value = ["Removed."]
+        with patch.dict("virtual_key_mapper.service.INTEGRATIONS", {"claude": integration}):
+            code, body = self.post("/api/setup/claude", {"model": "sonnet", "replace": True})
+            self.assertEqual((code, body["result"]), (200, {"notes": ["Configured."]}))
+            context, model, replace = integration.setup.call_args.args
+            self.assertEqual((context.token, model, replace), ("secret", "sonnet", True))
+            self.assertEqual(self.post("/api/setup/claude/remove", {})[1]["result"], {"notes": ["Removed."]})
+        code, body = self.post("/api/setup/nothing", {})
+        self.assertEqual(code, 400)
+        self.assertIn("No tool 'nothing'", body["error"])
+
+    def test_labels_are_bound_and_unbound(self):
+        checkout = Checkout(self.work, "github.com/company/repo", None)
+        with patch("virtual_key_mapper.server.find_checkout", return_value=checkout):
+            code, body = self.post("/api/repository/bind", {"labels": {"customer": "acme"}})
+            self.assertEqual((code, body["result"]), (200, {"shared": False, "target": "github.com/company/repo", "labels": {"customer": "acme"}}))
+            self.assertEqual(self.get("/api/repositories")[1]["result"][0]["labels"], {"customer": "acme"})
+            self.assertTrue(self.get("/api/repository")[1]["result"]["complete"])
+            code, body = self.post("/api/repository/bind", {"labels": {"project": "shop"}, "shared": True})
+            self.assertEqual((code, Path(body["result"]["target"])), (200, self.work / ".vkm"))
+            self.assertEqual(self.post("/api/repository/unbind", {"keys": ["customer"]})[1]["result"], {"repository": "github.com/company/repo"})
+            self.assertEqual(self.get("/api/repositories")[1]["result"], [])
+            for request, message in (
+                ({"labels": {}}, "'labels' must be an object"),
+                ({"labels": {"customer": 1}}, "'labels' must be an object"),
+                ({"labels": {"customer": "initech", "team": "x"}}, "No label 'team'"),
+                ({"keys": "customer"}, None),
+            ):
+                with self.subTest(request=request):
+                    path = "/api/repository/unbind" if "keys" in request else "/api/repository/bind"
+                    code, body = self.post(path, request)
+                    self.assertEqual(code, 400)
+                    if message:
+                        self.assertIn(message, body["error"])
+
+    def test_bodies_must_be_json_objects_of_a_limited_size(self):
+        for data, status in ((b"[1]", 400), (b"{", 400), (b" " * 70000, 413)):
+            with self.subTest(status=status, size=len(data)):
+                request = urllib.request.Request(self.server.url + "/api/logout", data=data, method="POST")
+                request.add_header("Authorization", f"Bearer {TOKEN}")
+                request.add_header("Content-Type", "application/json")
+                with self.assertRaises(urllib.error.HTTPError) as caught:
+                    DIRECT.open(request, timeout=10)
+                self.assertEqual(caught.exception.code, status)
+        self.auth.logout.assert_not_called()
 
     def test_the_state_file_names_url_and_token_and_is_removed_only_by_its_server(self):
         path = write_state(self.store, self.server)

@@ -10,6 +10,8 @@ the date.
 - `vkm serve` gives local apps and scripts the same information as the commands over HTTP on
   `127.0.0.1`: a current token, a folder's labels and request headers, the labels and their
   values, the models and the sign-in state. Each start makes a new token that only you can read.
+- `vkm serve` also makes changes: add and select profiles, sign in and out, set up and remove
+  tools, and assign or remove a repository's labels, with the same checks as the commands.
 - `vkm models list [--json]` prints the model aliases the gateway offers you, the names to pass
   to `--model` (Codex cannot list them itself). `vkm setup opencode` uses the same list.
 - Claude Code lists your gateway's models: `vkm setup claude` and `vkm run claude` turn on Claude

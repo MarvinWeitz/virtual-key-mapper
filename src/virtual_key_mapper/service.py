@@ -10,13 +10,14 @@ from typing import Callable, Mapping
 
 from .adapters import Api, Auth, Credential, Gateway, IntegrationContext
 from .errors import CredentialError
-from .labels import Attribution, Choice, LabelConfig, LabelDefinition, validate_key, validate_value
+from .labels import Attribution, Choice, LabelConfig, LabelDefinition, env_name, validate_key, validate_value
 from .models import list_models
 from .profiles import Profile, ProfileStore
 from .integrations.claude import Claude
-from .registry import auth_for, gateway_for
+from .registry import INTEGRATIONS, auth_for, gateway_for, gateway_outputs
 from .repositories import Checkout, RepositoryStore
-from .resolve import failed_document, load_config, resolve_labels, show_document, write_label_file
+from .resolve import failed_document, label_config, load_config, resolve_labels, show_document, write_label_file
+from .rules import RulesLoader
 from .storage import NativeKeyring
 
 CLAUDE = Claude()
@@ -52,6 +53,38 @@ def profile_document(profile: Profile) -> dict:
         "outputs": {},
         **profile.definitions(),
     }
+
+
+def check_profile(
+    store: ProfileStore, profile: Profile, notify: Callable[[str], None], token: Callable[[], str] | None = None,
+) -> None:
+    """Refuse what can be checked before use: the profile with its adapter, and with the rules when they can be read."""
+    outputs = gateway_outputs(profile.gateway_type)
+    if profile.rules is None:
+        label_config(profile, outputs, None)
+        return
+    try:
+        rules = RulesLoader(store, profile, token)()
+    except CredentialError as error:
+        notify(f"The label rules could not be read to check the profile against them: {error}")
+        # Still refuse what is wrong whatever the rules define, e.g. a required profile label that reaches no output.
+        LabelConfig.build(outputs, profile_labels=profile.labels, profile_outputs=profile.outputs, unread_central=True)
+        return
+    if rules is not None:
+        central = {env_name(definition.key): definition.key for definition in rules.labels}
+        for definition in profile.labels:
+            if env_name(definition.key) in central:
+                raise CredentialError(
+                    f"The label rules define '{central[env_name(definition.key)]}', so the profile cannot define "
+                    f"'{definition.key}'; remove it with --no-label {definition.key}."
+                )
+    for notice in label_config(profile, outputs, rules).notices:
+        notify(notice)
+
+
+def add_profile(store: ProfileStore, profile: Profile, notify: Callable[[str], None]) -> None:
+    check_profile(store, profile, notify)  # A new profile has no sign-in yet.
+    store.add(profile)
 
 
 @dataclass(frozen=True)
@@ -122,6 +155,15 @@ class Service:
     def status(self) -> dict:
         return self.auth.status()
 
+    def login(self, *, no_browser: bool = False, timeout: int = 180) -> Credential:
+        """Sign in with the profile's sign-in kind, e.g. SSO in a browser; waits for it to finish."""
+        if not 1 <= timeout <= 900:
+            raise CredentialError("--timeout must be between 1 and 900 seconds.")
+        return self.auth.login(self.notify, no_browser=no_browser, timeout=timeout)
+
+    def logout(self) -> None:
+        self.auth.logout(self.notify)
+
     def token_document(self) -> dict:
         """``vkm token --json``: a current access token, renewed if needed."""
         credential = self.credential()
@@ -134,6 +176,18 @@ class Service:
 
     def models(self) -> list[str]:
         return list_models(self.gateway, self.token())
+
+    # Tools
+
+    def setup(self, tool: str, model: str | None = None, replace: bool = False) -> list[str]:
+        """Configure a tool once to use this CLI; return the notes for the user."""
+        integration = _integration(tool)
+        token = self.token()  # Fail now, not later in the tool, when the profile is not signed in; some tools list models with it.
+        return integration.setup(self.integration(token), model, replace)
+
+    def remove(self, tool: str) -> list[str]:
+        """Undo what setup wrote for a tool; keep everything else."""
+        return _integration(tool).remove(self.integration(labels=False))
 
     # Labels
 
@@ -195,6 +249,10 @@ class Service:
             return failed_document(config, error, checkout)
         return show_document(config, attribution, directory, checkout)
 
+    def bindings(self) -> list[dict]:
+        """``vkm repo list``: your personal bindings for this profile's gateway."""
+        return RepositoryStore(self.store).list(self.profile.gateway)
+
     def bind(
         self, directory: Path, checkout: Checkout | None, labels: Mapping[str, str], *, shared: bool = False,
         replace: bool = False,
@@ -240,6 +298,12 @@ class Service:
                     self.notify(f"Updated {path}; running Claude sessions use the new labels from their next prompt.")
         except CredentialError as error:
             self.notify(f"Warning: Claude local settings were not updated: {error}")
+
+
+def _integration(tool: str):
+    if tool not in INTEGRATIONS:
+        raise CredentialError(f"No tool '{tool}'; tools: {', '.join(sorted(INTEGRATIONS))}.")
+    return INTEGRATIONS[tool]
 
 
 def checkout_origin(checkout: Checkout | None) -> str:
