@@ -465,31 +465,15 @@ again and skips what is already published; its "dry run" option only checks and 
 
 ## 🛠️ Contributing
 
-Pull requests need two checks: **Test features** (all CI jobs on Windows, macOS and Linux) and
-**Changelog entry**.
+Contributions are welcome. [CONTRIBUTING.md](CONTRIBUTING.md) explains how to set up the checkout,
+run the tests (including the live tests with the real tools) and open a pull request. Pull
+requests need two checks: **Test features** (all CI jobs on Windows, macOS and Linux) and
+**Changelog entry**. Details and the manual checklist: [docs/testing.md](docs/testing.md). How it
+works and why: [docs/architecture.md](docs/architecture.md); extending it:
+[docs/adapters.md](docs/adapters.md).
 
-```bash
-.venv/bin/python -m unittest discover -s tests -v
-cd vscode-extension && npm test && npm run test:host     # extension unit tests; real VS Code host
-cd vscode-extension/local && npm test
-```
-
-Live tests run the real tools against a local fake gateway (no model calls, no secrets). Install
-the pinned versions and point the tests at them:
-
-```bash
-cd ci/agents && npm ci && cd ../..
-export $(node ci/agents/locate.mjs)    # sets VKM_TEST_{CLAUDE,CODEX,OPENCODE}_BINARY
-.venv/bin/python -m unittest discover -s tests -v
-```
-
-`VKM_TEST_VAULT=1` also runs `tests/test_vault_native.py` against your real OS vault (uniquely named test entries, removed afterwards).
-
-Locally, missing tools and shells skip their tests; CI requires them. CI runs everything on Windows,
-macOS and Linux: the Python suite, the live agents and shell hooks, the real OS vault, both extensions
-in a real VS Code, and a real dev container on Linux; a weekly run tries the newest agent releases.
-Details and the manual checklist: [docs/testing.md](docs/testing.md). How it works and why:
-[docs/architecture.md](docs/architecture.md); extending it: [docs/adapters.md](docs/adapters.md).
+Everyone taking part follows the [Code of Conduct](CODE_OF_CONDUCT.md). Report security problems
+privately, as described in the [Security Policy](SECURITY.md), not in a public issue.
 
 ## 📄 License
 

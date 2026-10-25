@@ -1,0 +1,25 @@
+version: 2
+# ci/agents is left out on purpose: the weekly "Latest agents" workflow tries new agent releases,
+# and the pins are bumped by hand once vkm works with them (.claude/skills/bump-agent-pins).
+updates:
+  - package-ecosystem: pip
+    directory: /
+    schedule:
+      interval: weekly
+    labels: [dependencies]
+  - package-ecosystem: npm
+    directories: [/vscode-extension, /vscode-extension/local]
+    schedule:
+      interval: weekly
+    groups:
+      npm-minor-and-patch:
+        update-types: [minor, patch]
+    labels: [dependencies, no changelog]
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      actions-minor-and-patch:
+        update-types: [minor, patch]
+    labels: [dependencies, no changelog]
