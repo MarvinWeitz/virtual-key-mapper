@@ -59,7 +59,8 @@ for both; the tools and extensions only consume its outputs.
 | `gateways/litellm.py` | LiteLLM endpoints, the `tags` and `metadata` outputs, the `/tag/list` catalogue |
 | `integrations/claude.py`, `codex.py`, `opencode.py` | Tool setup, launch and (Claude) the prompt guard |
 | `shells.py` | Per-directory shell hooks for environment-driven tools (Codex) |
-| `cli.py` | Commands; reaches adapters only through the registry |
+| `service.py` | One profile's operations as data (sign-in, labels, repositories), shared by the commands and the local server |
+| `cli.py` | Commands: arguments, the terminal picker and printing; reaches adapters only through the registry |
 | `vscode-extension/` | Copilot Chat model provider and the remote relay (TypeScript) |
 | `vscode-extension/local/` | Companion extension that runs on the local machine |
 

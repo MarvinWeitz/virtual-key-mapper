@@ -272,7 +272,7 @@ class CliTests(ToolTestCase):
     def test_repo_show_env_unsets_everything_when_the_labels_cannot_be_resolved(self):
         stale = {TAG: "customer:stale", "VKM_HEADER_X_OLD": "x", ATTRIBUTION_VARIABLE: "1"}
         expected = [f"unset {name}" for name in (TAG, METADATA, "VKM_HEADER_X_OLD", ATTRIBUTION_VARIABLE)]
-        with patch("virtual_key_mapper.cli.resolve_labels", side_effect=RuntimeError("boom")):
+        with patch("virtual_key_mapper.service.resolve_labels", side_effect=RuntimeError("boom")):
             result, stdout, stderr, _ = self.call("repo", "show", "--env", "bash", "--directory", str(self.folder), environ=stale)
         self.assertEqual((result, stdout.splitlines()), (0, expected))
         self.assertIn("could not be resolved", stderr)
