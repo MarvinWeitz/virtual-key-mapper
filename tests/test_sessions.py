@@ -518,6 +518,14 @@ class SessionTests(unittest.TestCase):
         self.client.revoke.assert_called_once_with(other)
         self.assertIsNone(self.secrets.get(self.account))
 
+    def test_forget_logs_out_only_when_a_sign_in_is_stored(self):
+        self.manager.forget(self.profile, self.notify)
+        self.client.revoke.assert_not_called()
+        self.manager.login(self.profile, self.notify)
+        self.manager.forget(self.profile, self.notify)
+        self.client.revoke.assert_called_once_with(self.session)
+        self.assertIsNone(self.secrets.get(self.account))
+
     def test_logout_deletes_an_unreadable_stored_sign_in(self):
         self.secrets.put(self.account, {"version": 1})
         self.manager.logout(self.profile, self.notify)

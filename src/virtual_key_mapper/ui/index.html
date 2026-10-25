@@ -49,6 +49,27 @@
         <p class="hint" id="login-hint" hidden>Finish the sign-in in the browser tab that opened. This page updates when you are done.</p>
       </div>
 
+      <details id="edit-profile" class="panel" hidden>
+        <summary><h2>Profile settings</h2></summary>
+        <dl class="facts">
+          <dt>Gateway</dt><dd id="edit-gateway"></dd>
+          <dt>Sign-in</dt><dd id="edit-auth"></dd>
+        </dl>
+        <form id="edit-form">
+          <label>Label rules (optional)<input name="rules" placeholder="https://… or a file path"></label>
+          <fieldset>
+            <legend>Labels</legend>
+            <p class="hint">Changes apply to the next request. The gateway and the sign-in cannot be changed; add a new profile for that.</p>
+            <div id="edit-rows" class="label-rows"></div>
+            <button type="button" id="edit-add-label">Add a label</button>
+          </fieldset>
+          <div class="actions">
+            <button class="primary" type="submit">Save changes</button>
+            <button type="button" id="remove-profile" class="danger">Delete this profile</button>
+          </div>
+        </form>
+      </details>
+
       <details id="add-profile" class="panel">
         <summary><h2>Add a gateway profile</h2></summary>
         <form id="profile-form">
@@ -61,7 +82,7 @@
           <fieldset>
             <legend>Labels</legend>
             <p class="hint">Labels go with every request, such as the customer the work is billed to. Leave this empty when your label rules define them.</p>
-            <div id="label-rows"></div>
+            <div id="label-rows" class="label-rows"></div>
             <button type="button" id="add-label">Add a label</button>
           </fieldset>
           <div class="actions"><button class="primary" type="submit">Add profile</button></div>
@@ -121,7 +142,9 @@
     <div class="label-row">
       <label>Key<input name="key" required pattern="[a-z][a-z0-9_\-]{0,31}" placeholder="customer"></label>
       <label class="grow">Description<input name="description" placeholder="Who the work is billed to"></label>
+      <label class="grow">Values to choose from (optional)<input name="values" placeholder="acme=Acme, globex=Globex"></label>
       <label class="check"><input type="checkbox" name="required"> Required</label>
+      <label class="check"><input type="checkbox" name="strict"> Only these values</label>
       <button type="button" class="remove" aria-label="Remove this label">Remove</button>
     </div>
   </template>

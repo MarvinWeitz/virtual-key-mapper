@@ -132,6 +132,8 @@ not its display name. Your sign-in renews itself; sign in again only after loggi
 long pause or a change of team membership.
 The gateway must be served at its host root with LiteLLM's `PROXY_BASE_URL` set to that URL
 (see [Gateway requirements](docs/architecture.md#11-gateway-requirements)).
+`vkm profile remove NAME` signs out of a profile and deletes it; tools set up with it then get no
+more keys.
 
 ## 🧭 Labels
 
@@ -158,7 +160,8 @@ the choices the picker offers; with `--strict` only those are accepted. `--sourc
 or `-`, starting with a letter. A profile label for a key the central document defines is
 refused (or, when the document cannot be read at the time, ignored with a notice): the central
 one applies. If no label is defined anywhere, requests carry only the repository, and `setup`,
-`run` and `repo show` say so.
+`run` and `repo show` say so. The setup page (`vkm ui`) edits the same labels, their values and
+the rules location under "Profile settings"; sources and outputs stay with the command.
 
 ### Values
 
@@ -332,7 +335,10 @@ Without `directory=FOLDER`, the labels are those of the folder the server starte
 
 Changes are `POST` requests with a JSON body (`Content-Type: application/json`), the same as the
 commands: `/api/profiles` (`profile add`, with `name`, `gateway`, `team_id`, `rules` and
-`definitions`), `/api/profiles/default` (`profile use`), `/api/login` and `/api/logout`,
+`definitions`), `/api/profiles/update` (`profile update`, with `name`, `rules`, null to stop using
+them, and the `labels` or `outputs` in `definitions`, which replace the profile's),
+`/api/profiles/remove` (`profile remove`, with `name`), `/api/profiles/default` (`profile use`),
+`/api/login` and `/api/logout`,
 `/api/setup/TOOL` (with `model` and `replace`) and `/api/setup/TOOL/remove`,
 `/api/repository/bind` (with `labels`, `directory`, `shared` and `replace`) and
 `/api/repository/unbind` (with `keys`). `GET /api/tools` and `GET /api/repositories` list the
@@ -424,7 +430,7 @@ supported gateway, the headers a proxy must pass, certificates and installation 
 
 ## ⌨️ Commands
 
-`profile add|list|show|use|update`, `login`, `status`, `token [--json]`, `logout`,
+`profile add|list|show|use|update|remove`, `login`, `status`, `token [--json]`, `logout`,
 `repo show|bind|unbind|list`, `labels list|values`, `models list [--json]`, `setup claude|codex|opencode`, `run`,
 `shell-init`, `serve`, `ui`, and `claude guard` (the hook). `vkm COMMAND --help` explains each.
 
