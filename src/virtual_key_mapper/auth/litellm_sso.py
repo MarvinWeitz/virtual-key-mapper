@@ -236,6 +236,16 @@ class SessionManager:
                 "state": state,
             }
 
+    def forget(self, profile: Profile, notify: Callable[[str], None]) -> None:
+        """Log out before the profile is deleted, if a sign-in is stored; a vault that cannot be reached is an error."""
+        with self._locked(profile):
+            try:
+                stored = self.secrets.get(self.account(profile)) is not None
+            except CredentialError:
+                stored = True  # Logout deletes a sign-in it cannot read, or fails when the vault cannot be reached.
+        if stored:
+            self.logout(profile, notify)
+
     def logout(self, profile: Profile, notify: Callable[[str], None]) -> None:
         """Revoke the grant where possible; the local credential is deleted even when that fails."""
         with self._locked(profile):
@@ -279,6 +289,9 @@ class LiteLLMSSO:
 
     def logout(self, notify: Callable[[str], None]) -> None:
         self.manager.logout(self.profile, notify)
+
+    def forget(self, notify: Callable[[str], None]) -> None:
+        self.manager.forget(self.profile, notify)
 
     def status(self) -> dict:
         return self.manager.status(self.profile)

@@ -1,4 +1,7 @@
+import contextlib
+import io
 import json
+from dataclasses import replace
 import os
 import tempfile
 import threading
@@ -12,7 +15,7 @@ from unittest.mock import MagicMock, patch
 from isolation import isolate_tool_configuration
 from virtual_key_mapper import __version__, cli
 from virtual_key_mapper.adapters import Credential
-from virtual_key_mapper.labels import Choice, LabelDefinition
+from virtual_key_mapper.labels import Choice, LabelDefinition, OutputOverride
 from virtual_key_mapper.profiles import Profile, ProfileStore
 from virtual_key_mapper.repositories import Checkout
 from virtual_key_mapper.server import STATE_FILE, Api, Server, remove_state, write_state
@@ -156,6 +159,34 @@ class ServerTests(unittest.TestCase):
                 self.assertEqual(code, 400)
                 self.assertIn(message, body["error"])
 
+    def test_profiles_can_be_changed_and_removed(self):
+        self.store.update("consulting", lambda profile: replace(profile, outputs={"tags": OutputOverride(("${customer}",))}))
+        code, body = self.post("/api/profiles/update", {
+            "name": "consulting", "rules": "https://gateway.example/rules.json",
+            "definitions": {"labels": [{"key": "customer", "values": [{"id": "acme"}], "strict": True}]},
+        })
+        self.assertEqual(code, 200, body)
+        profile = self.store.get("consulting")
+        self.assertEqual((profile.rules, [item.key for item in profile.labels]), ("https://gateway.example/rules.json", ["customer"]))
+        self.assertTrue(profile.labels[0].strict)
+        self.assertIn("tags", profile.outputs)
+        self.assertEqual(self.post("/api/profiles/update", {"name": "consulting", "rules": None})[0], 200)
+        self.assertIsNone(self.store.get("consulting").rules)
+        for request, message in (
+            ({"name": "consulting"}, "Nothing to change"),
+            ({"name": "missing", "rules": None}, "Select a configured profile"),
+            ({"name": "consulting", "definitions": {"labels": [{"key": "Bad"}]}}, ""),
+        ):
+            with self.subTest(request=request):
+                code, body = self.post("/api/profiles/update", request)
+                self.assertEqual(code, 400)
+                self.assertIn(message, body["error"])
+        code, body = self.post("/api/profiles/remove", {"name": "consulting"})
+        self.assertEqual((code, body["result"]), (200, {"removed": "consulting", "was_default": True}))
+        self.auth.forget.assert_called_once()
+        self.assertEqual(self.store.list(), (None, []))
+        self.assertEqual(self.post("/api/profiles/remove", {"name": "consulting"})[0], 400)
+
     def test_sign_in_and_out_go_through_the_profiles_sign_in(self):
         self.auth.login.return_value = Credential("secret", None, "dev@example.com")
         self.assertEqual(self.post("/api/login", {"timeout": 30})[1]["result"], {"profile": "consulting", "user": "dev@example.com"})
@@ -260,7 +291,7 @@ class CommandTests(unittest.TestCase):
         temp = tempfile.TemporaryDirectory()
         self.addCleanup(temp.cleanup)
         ProfileStore(Path(temp.name)).add(Profile("consulting", "https://gateway.example", {"team_id": "t"}))
-        with patch.object(cli, "serve") as serve:
+        with patch.object(cli, "serve") as serve, contextlib.redirect_stderr(io.StringIO()):
             code = cli.main(["--home", temp.name, *arguments, "--directory", temp.name])
         return code, serve
 

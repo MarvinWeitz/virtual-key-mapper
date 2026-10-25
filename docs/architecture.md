@@ -115,7 +115,7 @@ Tools and extensions never see header names or URL paths. They read three JSON c
 `vkm serve` returns the same documents over HTTP (`/api/token`, `/api/repository`, `/api/profiles`
 with `{"default", "profiles": [...]}`, and the `--json` outputs of `status`, `labels list`, `labels values`
 and `models list`), wrapped as `{"result", "messages"}`. Changes are `POST` requests with a JSON object body
-that call the same service operations as the commands (profile add and use, login, logout, setup, bind, unbind). The same rule holds: add fields, never rename or
+that call the same service operations as the commands (profile add, update, use and remove, login, logout, setup, bind, unbind). The same rule holds: add fields, never rename or
 remove one without updating every consumer.
 
 ## 4. Signing in: LiteLLM native SSO

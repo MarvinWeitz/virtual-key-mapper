@@ -1,4 +1,5 @@
 import os
+from dataclasses import replace
 import tempfile
 import unittest
 from pathlib import Path
@@ -68,6 +69,31 @@ class ServiceTests(unittest.TestCase):
             "key": "customer", "source": "values",
             "values": [{"id": "acme", "name": "Acme", "description": None}, {"id": "globex", "name": None, "description": None}],
         })
+
+    def test_removing_a_profile_signs_out_and_leaves_no_default(self):
+        self.store.add(Profile("second", "https://other.example", {"team_id": "t"}))
+        self.assertTrue(self.service.remove_profile())
+        self.auth.forget.assert_called_once()
+        self.assertEqual(self.store.list(), (None, [self.store.get("second")]))
+        self.assertEqual(len(self.messages), 1)
+        self.assertIn("no longer get keys", self.messages[0])
+        self.assertFalse(Service(self.store, "second", notify=self.messages.append, auth_factory=lambda *_: self.auth).remove_profile())
+        self.assertEqual(self.store.list(), (None, []))
+
+    def test_a_profile_is_not_removed_when_signing_out_fails(self):
+        self.auth.forget.side_effect = CredentialError("Cannot read the OS credential vault; unlock it and retry.")
+        with self.assertRaisesRegex(CredentialError, "credential vault"):
+            self.service.remove_profile()
+        self.assertEqual(self.store.get().name, "consulting")
+
+    def test_updating_a_profile_is_checked_and_reloads_it(self):
+        self.assertEqual(self.service.labels.keys, ("customer", "project"))
+        profile = self.service.update_profile(lambda profile: replace(profile, labels=LABELS[:1]))
+        self.assertEqual(([item.key for item in profile.labels], self.service.labels.keys), (["customer"], ("customer",)))
+        broken = (LabelDefinition("customer"), LabelDefinition("customer"))
+        with self.assertRaises(CredentialError):
+            self.service.update_profile(lambda profile: replace(profile, labels=broken))
+        self.assertEqual(len(self.store.get().labels), 1)
 
     def test_the_repository_document_reports_missing_labels_and_then_the_headers(self):
         document = self.service.repository(self.work, self.checkout)

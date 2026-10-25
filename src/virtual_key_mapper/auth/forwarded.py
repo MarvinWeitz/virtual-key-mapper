@@ -135,6 +135,9 @@ class Forwarded:
             f"Profile '{self.profile.name}' uses the sign-in of your local machine: run 'vkm logout' there."
         )
 
+    def forget(self, notify: Callable[[str], None]) -> None:
+        pass  # The sign-in stays on your local machine.
+
     def status(self) -> dict:
         base = {"profile": self.profile.name, "gateway": self.profile.gateway, "auth": "forwarded", "agent": agent_path()}
         try:

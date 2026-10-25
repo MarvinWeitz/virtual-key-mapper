@@ -96,9 +96,52 @@ async function loadProfiles() {
   $("#make-default").hidden = !state.profile || state.profile === active;
   if (profiles.length === 0) {
     $("#status-card").hidden = true;
+    $("#edit-profile").hidden = true;
     return;
   }
+  showSettings();
   await loadStatus();
+}
+
+// The selected profile's settings: what can change without a new sign-in.
+function showSettings() {
+  const profile = state.profiles.find((item) => item.name === state.profile);
+  $("#edit-profile").hidden = !profile;
+  if (!profile) return;
+  const { type, ...settings } = profile.auth;
+  $("#edit-gateway").textContent = `${profile.gateway.url} (${profile.gateway.type})`;
+  $("#edit-auth").textContent = [type, ...Object.entries(settings).map(([name, value]) => `${name}: ${value}`)].join(", ");
+  const form = $("#edit-form");
+  form.elements.rules.value = profile.rules || "";
+  $("#edit-rows").replaceChildren();
+  for (const definition of profile.labels) addLabelRow($("#edit-rows"), definition);
+}
+
+async function saveProfile(event) {
+  event.preventDefault();
+  const form = event.target;
+  const rules = form.elements.rules.value.trim();
+  const body = { name: state.profile, rules: rules || null, definitions: { labels: readLabels($("#edit-rows")) } };
+  await busy(form.querySelector('[type="submit"]'), async () => {
+    await api("/profiles/update", { method: "POST", body, profile: false });
+    show(`Saved profile ${state.profile}.`);
+    state.definitions = [];
+    await loadProfiles();
+  });
+}
+
+async function removeProfile(event) {
+  const name = state.profile;
+  const question = `Delete profile ${name}? You are signed out of it, and tools set up with it no longer get keys. ` +
+    "Your saved repository labels stay.";
+  if (!window.confirm(question)) return;
+  await busy(event.target, async () => {
+    const result = await api("/profiles/remove", { method: "POST", body: { name }, profile: false });
+    show(`Deleted profile ${name}.`);
+    if (result.was_default && state.profiles.length > 1) show("Choose a default profile with \"Use as default\".", "note");
+    state.profile = null;
+    await loadProfiles();
+  });
 }
 
 async function loadStatus() {
@@ -124,23 +167,45 @@ async function loadStatus() {
   state.models = null;
 }
 
-function addLabelRow() {
+// One row per label definition; ``definition`` fills it, and settings the row cannot show (sources) are kept.
+function addLabelRow(container, definition = null) {
   const row = $("#label-row").content.firstElementChild.cloneNode(true);
+  const field = (name) => row.querySelector(`[name="${name}"]`);
+  if (definition) {
+    field("key").value = definition.key;
+    field("description").value = definition.description || "";
+    field("values").value = (definition.values || []).map((choice) => choice.name ? `${choice.id}=${choice.name}` : choice.id).join(", ");
+    field("required").checked = Boolean(definition.required);
+    field("strict").checked = Boolean(definition.strict);
+    if (definition.sources) row.dataset.sources = JSON.stringify(definition.sources);
+  }
   row.querySelector(".remove").addEventListener("click", () => row.remove());
-  $("#label-rows").append(row);
+  container.append(row);
+}
+
+function readLabels(container) {
+  return [...container.querySelectorAll(".label-row")].map((row) => {
+    const field = (name) => row.querySelector(`[name="${name}"]`);
+    const label = { key: field("key").value.trim() };
+    const description = field("description").value.trim();
+    if (description) label.description = description;
+    const values = field("values").value.split(",").map((item) => item.trim()).filter(Boolean).map((item) => {
+      const [id, ...name] = item.split("=");
+      return name.length && name.join("=").trim() ? { id: id.trim(), name: name.join("=").trim() } : { id: id.trim() };
+    });
+    if (values.length) label.values = values;
+    if (field("required").checked) label.required = true;
+    if (field("strict").checked) label.strict = true;
+    if (row.dataset.sources) label.sources = JSON.parse(row.dataset.sources);
+    return label;
+  });
 }
 
 async function addProfile(event) {
   event.preventDefault();
   const form = event.target;
   const data = new FormData(form);
-  const labels = [...document.querySelectorAll("#label-rows .label-row")].map((row) => {
-    const label = { key: row.querySelector('[name="key"]').value.trim() };
-    const description = row.querySelector('[name="description"]').value.trim();
-    if (description) label.description = description;
-    if (row.querySelector('[name="required"]').checked) label.required = true;
-    return label;
-  });
+  const labels = readLabels($("#label-rows"));
   const body = { name: data.get("name").trim(), gateway: data.get("gateway").trim().replace(/\/+$/, "") };
   for (const name of ["team_id", "rules"]) if (data.get(name).trim()) body[name] = data.get(name).trim();
   if (labels.length) body.definitions = { labels };
@@ -354,8 +419,11 @@ function start() {
     const open = document.querySelector('[role="tab"][aria-selected="true"]').getAttribute("aria-controls");
     if (open !== "account") selectTab(open);
   }));
-  $("#add-label").addEventListener("click", addLabelRow);
+  $("#add-label").addEventListener("click", () => addLabelRow($("#label-rows")));
   $("#profile-form").addEventListener("submit", addProfile);
+  $("#edit-add-label").addEventListener("click", () => addLabelRow($("#edit-rows")));
+  $("#edit-form").addEventListener("submit", saveProfile);
+  $("#remove-profile").addEventListener("click", removeProfile);
   $("#login").addEventListener("click", login);
   $("#logout").addEventListener("click", logout);
   $("#make-default").addEventListener("click", makeDefault);

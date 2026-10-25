@@ -362,6 +362,18 @@ class CliTests(unittest.TestCase):
             self.assertEqual(self.call("profile", "list"), 0)
         self.assertIn("Selected profile", self.stdout.getvalue())
 
+    def test_profile_remove_signs_out_first(self):
+        store = ProfileStore(self.home)
+        store.add(Profile("a", "https://example.com", {"team_id": "a"}))
+        with patch("virtual_key_mapper.cli.NativeKeyring"), patch("virtual_key_mapper.cli.auth_for") as auth:
+            self.assertEqual(self.call("profile", "remove", "a"), 0)
+            auth.return_value.forget.assert_called_once()
+            self.assertEqual(self.call("profile", "remove", "a"), 1)
+        self.assertEqual(store.list(), (None, []))
+        self.assertIn("Removed profile 'a'", self.stdout.getvalue())
+        self.assertIn("no default profile", self.stderr.getvalue())
+        self.assertIn("Unknown profile", self.stderr.getvalue())
+
     def test_token_command_has_exact_stdout(self):
         store = ProfileStore(self.home)
         store.add(Profile("a", "https://example.com", {"team_id": "a"}))
