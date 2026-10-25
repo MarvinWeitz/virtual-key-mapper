@@ -468,9 +468,9 @@ again and skips what is already published; its "dry run" option only checks and 
 Contributions are welcome. [CONTRIBUTING.md](CONTRIBUTING.md) explains how to set up the checkout,
 run the tests (including the live tests with the real tools) and open a pull request. Pull
 requests need two checks: **Test features** (all CI jobs on Windows, macOS and Linux) and
-**Changelog entry**. Details and the manual checklist: [docs/testing.md](docs/testing.md). How it
-works and why: [docs/architecture.md](docs/architecture.md); extending it:
-[docs/adapters.md](docs/adapters.md).
+**Changelog entry**, and are merged through a merge queue. Details and the manual checklist:
+[docs/testing.md](docs/testing.md). How it works and why:
+[docs/architecture.md](docs/architecture.md); extending it: [docs/adapters.md](docs/adapters.md).
 
 Everyone taking part follows the [Code of Conduct](CODE_OF_CONDUCT.md). Report security problems
 privately, as described in the [Security Policy](SECURITY.md), not in a public issue.
