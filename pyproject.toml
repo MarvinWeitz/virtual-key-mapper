@@ -37,3 +37,6 @@ vkm = "virtual_key_mapper.cli:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.setuptools.package-data]
+virtual_key_mapper = ["ui/*"]

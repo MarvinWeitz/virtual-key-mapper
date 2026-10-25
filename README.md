@@ -102,6 +102,11 @@ python -m venv .venv
 Windows policies do), use `python -m virtual_key_mapper` everywhere instead; it accepts the
 same arguments.
 
+Prefer a page to the command line? Run `vkm ui` (or `python -m virtual_key_mapper ui`). It opens a
+setup page in your browser where you add your gateway, sign in, connect your tools and assign the
+labels of your repositories. The page runs on your computer only, until you press Ctrl+C. The same
+steps on the command line:
+
 ```bash
 # 1. Once per machine: a profile for your gateway and your business-unit team, then sign in.
 #    If your organisation publishes its label definitions, pass --rules URL instead of --label.
@@ -317,16 +322,48 @@ terminal it asks for missing required labels and saves the answers as your perso
 vkm serve [--port PORT] [--directory FOLDER]
 ```
 
+`vkm ui` runs the same server and opens the setup page in your browser (`--no-browser` prints its address).
+
 Serves the same JSON documents as the commands on `127.0.0.1` until you stop it with Ctrl+C:
 `/api/token`, `/api/repository` (the labels and request headers of a folder, `repo show --json`),
 `/api/labels`, `/api/labels/KEY/values`, `/api/models`, `/api/status` and `/api/profiles`.
 Without `directory=FOLDER`, the labels are those of the folder the server started in;
 `label=KEY=VALUE` sets a label for one request, as `--label` does. `profile=NAME` picks a profile.
 
+Changes are `POST` requests with a JSON body (`Content-Type: application/json`), the same as the
+commands: `/api/profiles` (`profile add`, with `name`, `gateway`, `team_id`, `rules` and
+`definitions`), `/api/profiles/default` (`profile use`), `/api/login` and `/api/logout`,
+`/api/setup/TOOL` (with `model` and `replace`) and `/api/setup/TOOL/remove`,
+`/api/repository/bind` (with `labels`, `directory`, `shared` and `replace`) and
+`/api/repository/unbind` (with `keys`). `GET /api/tools` and `GET /api/repositories` list the
+tools and your personal bindings. `/api/login` opens the browser on this computer and answers when
+the sign-in is done.
+
 Every request needs `Authorization: Bearer TOKEN`. A new token is made at each start and written,
 with the URL, to `serve.json` in the configuration folder, which only you can read. Requests to
 another host name or from other websites are refused. Responses are `{"result": ..., "messages": [...]}`,
 or `{"error": "...", "messages": [...]}` with an HTTP error status.
+
+### Any other tool, through the local proxy
+
+```bash
+cd ~/src/some-repo
+vkm serve --proxy [--label KEY=VALUE]... [--port PORT]
+```
+
+For tools and scripts that know nothing about vkm. Set the tool's base URL to
+`http://127.0.0.1:47474/openai-chat` (OpenAI Chat Completions), `…/openai-responses` (OpenAI
+Responses) or `…/anthropic-messages` (Anthropic Messages), and its API key to the contents of
+`proxy.key` in the configuration folder (made once, readable only by you). The proxy replaces that
+key with your current gateway key and adds the labels:
+
+1. labels the request sends itself, as `X-Vkm-Label: customer=acme, project=webshop`;
+2. otherwise the `--label` values given at start;
+3. otherwise the labels of the folder in the request's `X-Vkm-Directory` header, or of the folder the
+   proxy started in. They are checked on every request, so a new `repo bind` applies at once.
+
+A request is refused while a required label has no value. The proxy runs until you stop it; start it
+again after changing profiles. Requests from websites are refused.
 
 ### GitHub Copilot Chat (VS Code)
 
@@ -389,7 +426,7 @@ supported gateway, the headers a proxy must pass, certificates and installation 
 
 `profile add|list|show|use|update`, `login`, `status`, `token [--json]`, `logout`,
 `repo show|bind|unbind|list`, `labels list|values`, `models list [--json]`, `setup claude|codex|opencode`, `run`,
-`shell-init`, `serve`, and `claude guard` (the hook). `vkm COMMAND --help` explains each.
+`shell-init`, `serve`, `ui`, and `claude guard` (the hook). `vkm COMMAND --help` explains each.
 
 ## 📌 Releases
 

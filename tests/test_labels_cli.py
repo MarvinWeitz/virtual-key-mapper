@@ -196,7 +196,7 @@ class LabelCliTests(unittest.TestCase):
     def test_a_profile_is_still_checked_on_its_own_when_the_rules_cannot_be_read(self):
         before = (self.home / "profiles.json").read_text(encoding="utf-8")
         rules = ["--rules", "https://rules.example/labels.json"]
-        with patch("virtual_key_mapper.cli.RulesLoader", side_effect=CredentialError("offline")), \
+        with patch("virtual_key_mapper.service.RulesLoader", side_effect=CredentialError("offline")), \
                 patch("virtual_key_mapper.cli.NativeKeyring", side_effect=AssertionError):
             for args, message in (
                 (["--output", "tags=${project}"], "'customer' reaches no output"),
@@ -214,7 +214,7 @@ class LabelCliTests(unittest.TestCase):
 
     def test_rules_location_can_be_changed_without_touching_the_sign_in(self):
         account = self.store.get().account
-        with patch("virtual_key_mapper.cli.RulesLoader", side_effect=CredentialError("offline")):
+        with patch("virtual_key_mapper.service.RulesLoader", side_effect=CredentialError("offline")):
             for args in (["--rules", "https://rules.example/labels.json"], ["--no-rules"]):
                 self.assertEqual(self.call("profile", "update", "consulting", *args), 0)
                 self.assertEqual(self.store.get().account, account)

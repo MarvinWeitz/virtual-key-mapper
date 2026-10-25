@@ -60,7 +60,9 @@ for both; the tools and extensions only consume its outputs.
 | `integrations/claude.py`, `codex.py`, `opencode.py` | Tool setup, launch and (Claude) the prompt guard |
 | `shells.py` | Per-directory shell hooks for environment-driven tools (Codex) |
 | `service.py` | One profile's operations as data (sign-in, labels, repositories), shared by the commands and the local server |
-| `server.py` | `vkm serve`: the JSON documents over HTTP on 127.0.0.1, with a token per start |
+| `server.py` | `vkm serve` and `vkm ui`: the JSON documents over HTTP on 127.0.0.1, with a token per start |
+| `proxy.py` | `vkm serve --proxy`: forwards model requests to the gateway's endpoint per API, with the key and the labels |
+| `ui/` | The setup page `vkm ui` opens: plain HTML, CSS and JavaScript, no build step; it only calls the server's API |
 | `cli.py` | Commands: arguments, the terminal picker and printing; reaches adapters only through the registry |
 | `vscode-extension/` | Copilot Chat model provider and the remote relay (TypeScript) |
 | `vscode-extension/local/` | Companion extension that runs on the local machine |
@@ -112,7 +114,8 @@ Tools and extensions never see header names or URL paths. They read three JSON c
 
 `vkm serve` returns the same documents over HTTP (`/api/token`, `/api/repository`, `/api/profiles`
 with `{"default", "profiles": [...]}`, and the `--json` outputs of `status`, `labels list`, `labels values`
-and `models list`), wrapped as `{"result", "messages"}`. The same rule holds: add fields, never rename or
+and `models list`), wrapped as `{"result", "messages"}`. Changes are `POST` requests with a JSON object body
+that call the same service operations as the commands (profile add and use, login, logout, setup, bind, unbind). The same rule holds: add fields, never rename or
 remove one without updating every consumer.
 
 ## 4. Signing in: LiteLLM native SSO
