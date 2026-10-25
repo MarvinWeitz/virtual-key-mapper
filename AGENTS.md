@@ -13,7 +13,7 @@ in (`customer = "acme"`), and nothing is sent while a required label has no valu
 
 | Path | What it is |
 | --- | --- |
-| `src/virtual_key_mapper/` | The CLI. `cli.py` holds the commands; `adapters.py` the interfaces; `registry.py` wires adapters in. |
+| `src/virtual_key_mapper/` | The CLI. `cli.py` holds the commands, `service.py` the operations they share with other front ends; `adapters.py` the interfaces; `registry.py` wires adapters in. |
 | `src/virtual_key_mapper/auth/`, `gateways/` | Input-side adapters (sign-in kinds, gateways). The only place vendor knowledge may live. |
 | `src/virtual_key_mapper/integrations/` | Output-side adapters, one per tool (`claude`, `codex`, `opencode`). |
 | `tests/` | `unittest` suite. `isolation.py` redirects tool config; `live.py` gates tests on real binaries. |

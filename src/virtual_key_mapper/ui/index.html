@@ -1,0 +1,129 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Virtual Key Mapper</title>
+  <link rel="stylesheet" href="/app.css">
+  <script src="/app.js" defer></script>
+</head>
+<body>
+  <header class="bar">
+    <div class="brand">
+      <span class="mark" aria-hidden="true">vkm</span>
+      <span>Virtual Key Mapper</span>
+    </div>
+    <label class="profile-picker" hidden>
+      <span>Profile</span>
+      <select id="profile"></select>
+    </label>
+  </header>
+
+  <nav class="tabs" role="tablist" aria-label="Sections" hidden>
+    <button role="tab" id="tab-account" aria-controls="account" aria-selected="true">Account</button>
+    <button role="tab" id="tab-tools" aria-controls="tools" aria-selected="false">Tools</button>
+    <button role="tab" id="tab-repositories" aria-controls="repositories" aria-selected="false">Repositories</button>
+  </nav>
+
+  <div id="messages" class="messages" role="status" aria-live="polite"></div>
+
+  <main>
+    <section id="no-token" class="panel" hidden>
+      <h1>Open this page with vkm</h1>
+      <p>This page needs the key of a running <code>vkm ui</code>. Run <code>vkm ui</code> in a terminal; it opens the page for you.</p>
+    </section>
+
+    <section id="account" role="tabpanel" aria-labelledby="tab-account" hidden>
+      <div id="status-card" class="panel" hidden>
+        <h2>Sign-in</h2>
+        <dl class="facts">
+          <dt>Gateway</dt><dd id="status-gateway"></dd>
+          <dt>State</dt><dd><span id="status-state" class="pill"></span></dd>
+          <dt>Signed in as</dt><dd id="status-user"></dd>
+        </dl>
+        <div class="actions">
+          <button id="login" class="primary">Sign in</button>
+          <button id="logout">Sign out</button>
+          <button id="make-default">Use as default</button>
+        </div>
+        <p class="hint" id="login-hint" hidden>Finish the sign-in in the browser tab that opened. This page updates when you are done.</p>
+      </div>
+
+      <details id="add-profile" class="panel">
+        <summary><h2>Add a gateway profile</h2></summary>
+        <form id="profile-form">
+          <div class="grid">
+            <label>Profile name<input name="name" required pattern="[A-Za-z0-9_.\-]+" placeholder="work"></label>
+            <label>Gateway address<input name="gateway" type="url" required placeholder="https://llm.company.example"></label>
+            <label>Team ID<input name="team_id" placeholder="Exact team ID from the gateway"></label>
+            <label>Label rules (optional)<input name="rules" placeholder="https://… or a file path"></label>
+          </div>
+          <fieldset>
+            <legend>Labels</legend>
+            <p class="hint">Labels go with every request, such as the customer the work is billed to. Leave this empty when your label rules define them.</p>
+            <div id="label-rows"></div>
+            <button type="button" id="add-label">Add a label</button>
+          </fieldset>
+          <div class="actions"><button class="primary" type="submit">Add profile</button></div>
+        </form>
+      </details>
+    </section>
+
+    <section id="tools" role="tabpanel" aria-labelledby="tab-tools" hidden>
+      <p class="lead">Connect each tool once. It then gets short-lived keys and the labels of the folder you work in.</p>
+      <div id="tool-list" class="cards"></div>
+    </section>
+
+    <section id="repositories" role="tabpanel" aria-labelledby="tab-repositories" hidden>
+      <div class="split">
+        <div class="panel">
+          <h2>Folder</h2>
+          <form id="path-form" class="path">
+            <label class="grow"><span class="visually-hidden">Folder</span><input id="path" spellcheck="false"></label>
+            <button type="submit">Go</button>
+          </form>
+          <div class="actions small">
+            <button id="up">Up</button>
+            <button id="home">Home</button>
+          </div>
+          <ul id="folders" class="folders"></ul>
+        </div>
+        <div class="panel">
+          <h2>Labels here</h2>
+          <p id="repository-name" class="hint"></p>
+          <form id="labels-form">
+            <table class="labels">
+              <thead><tr><th scope="col">Label</th><th scope="col" class="value">Value</th><th scope="col">From</th></tr></thead>
+              <tbody id="label-values"></tbody>
+            </table>
+            <fieldset class="inline">
+              <legend>Save as</legend>
+              <label><input type="radio" name="kind" value="personal" checked><span>Only for me (this repository on this computer)</span></label>
+              <label><input type="radio" name="kind" value="shared"><span>A <code>.vkm</code> file to commit for the team</span></label>
+              <label><input type="checkbox" name="replace"><span>Change values I already saved</span></label>
+            </fieldset>
+            <div class="actions">
+              <button class="primary" type="submit">Save labels</button>
+              <button type="button" id="unbind">Remove my labels here</button>
+            </div>
+          </form>
+          <p id="repository-state" class="hint"></p>
+        </div>
+      </div>
+      <div class="panel">
+        <h2>My saved labels</h2>
+        <ul id="bindings" class="bindings"></ul>
+      </div>
+    </section>
+  </main>
+
+  <template id="label-row">
+    <div class="label-row">
+      <label>Key<input name="key" required pattern="[a-z][a-z0-9_\-]{0,31}" placeholder="customer"></label>
+      <label class="grow">Description<input name="description" placeholder="Who the work is billed to"></label>
+      <label class="check"><input type="checkbox" name="required"> Required</label>
+      <button type="button" class="remove" aria-label="Remove this label">Remove</button>
+    </div>
+  </template>
+</body>
+</html>
