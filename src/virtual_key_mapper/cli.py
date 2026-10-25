@@ -4,81 +4,41 @@ import json
 import os
 import re
 import sys
-from functools import cached_property
 from pathlib import Path
 from typing import Callable, Sequence
 
 from . import __version__
-from .adapters import Api, Auth, Credential, Gateway, IntegrationContext
+from .adapters import IntegrationContext
 from .errors import CredentialError
 from .labels import (
     MAX_VALUE, NO_LABELS_NOTICE, SOURCES, Attribution, Choice, Label, LabelConfig, LabelDefinition, MissingLabelsError,
     OutputOverride, definitions_from_dict, env_name, validate_key, validate_value,
 )
-from .models import list_models
 from .profiles import Profile, ProfileStore, default_home, with_label, with_output, without_label
-from .integrations.claude import Claude
 from .integrations.common import (
     ATTRIBUTION_VARIABLE, HEADER_PREFIX, header_environment, header_variable, launch_labels,
     require_attribution_environment,
 )
 from .registry import AUTH, GATEWAYS, INTEGRATIONS, auth_for, gateway_for, gateway_outputs
-from .repositories import Checkout, RepositoryStore, find_checkout
-from .resolve import (
-    failed_document, label_config, load_config, missing_error, resolve_labels, show_document, write_label_file,
-)
+from .repositories import RepositoryStore, find_checkout
+from .resolve import label_config, load_config, missing_error
 from .rules import RulesLoader
+from .service import CLAUDE, SOURCE_OPTIONS, Service, checkout_origin, profile_document
 from .shells import SHELLS, assignments, hook, pwsh_loader, without_daemon
 from .storage import NativeKeyring
-
-
-CLAUDE = Claude()
 
 
 def notify(message: str) -> None:
     print(message, file=sys.stderr)
 
 
-class Context:
-    """Per-invocation state: the configuration store and, lazily, the selected profile and its adapters."""
+class Context(Service):
+    """Per-invocation state: the parsed arguments and the selected profile's operations."""
 
     def __init__(self, store: ProfileStore, args: argparse.Namespace) -> None:
-        self.store = store
+        # The adapters are looked up here at call time, so tests can replace them in this module.
+        super().__init__(store, getattr(args, "profile", None), notify=notify, keyring=NativeKeyring, auth_factory=auth_for)
         self.args = args
-
-    @cached_property
-    def profile(self) -> Profile:
-        return self.store.get(getattr(self.args, "profile", None))
-
-    @cached_property
-    def auth(self) -> Auth:
-        return auth_for(self.profile, self.store, NativeKeyring)  # Only kinds that store credentials open the vault.
-
-    @cached_property
-    def gateway(self) -> Gateway:
-        return gateway_for(self.profile)
-
-    def credential(self) -> Credential:
-        credential = self.auth.credential()
-        if credential.notice:
-            notify(credential.notice)
-        return credential
-
-    def token(self) -> str:
-        return self.credential().secret
-
-    @cached_property
-    def labels(self) -> LabelConfig:
-        """The labels and outputs in effect; a credential is only requested for rules on the gateway's own origin."""
-        return load_config(self.store, self.profile, self.gateway.outputs(), self.token)
-
-    def resolve(
-        self, directory: Path, checkout: Checkout | None, explicit: dict[str, str | None] | None = None,
-        unknown_explicit: str = "error",
-    ) -> Attribution:
-        return resolve_labels(
-            self.store, self.profile, self.labels, directory, checkout, explicit=explicit, unknown_explicit=unknown_explicit,
-        )
 
     def notices(self) -> None:
         """For text commands only: dropped profile pieces, document remarks, and when no label is defined."""
@@ -103,14 +63,7 @@ def _directory(args: argparse.Namespace) -> Path:
 # Label values from the command line and the terminal picker
 
 
-_SOURCE_OPTIONS = {"explicit": "--label", "local": "a personal binding", "file": "a .vkm file"}
-
-
-def _undefined(config: LabelConfig, key: str) -> CredentialError:
-    return CredentialError(f"No label '{key}' is defined; defined labels: {', '.join(config.keys) or 'none'}.")
-
-
-def _label_values(config: LabelConfig, pairs: Sequence[str] | None, source: str) -> dict[str, str]:
+def _label_values(context: Context, pairs: Sequence[str] | None, source: str) -> dict[str, str]:
     """``--label KEY=VALUE`` arguments checked against the definitions; ``KEY=`` gives "" (no value)."""
     values: dict[str, str] = {}
     for pair in pairs or ():
@@ -120,35 +73,14 @@ def _label_values(config: LabelConfig, pairs: Sequence[str] | None, source: str)
         validate_key(key)
         if key in values:
             raise CredentialError(f"--label {key} is given more than once.")
-        definition = config.get(key)
-        if definition is None:
-            raise _undefined(config, key)
-        if source not in definition.sources:
-            raise CredentialError(
-                f"Label '{key}' cannot be set with {_SOURCE_OPTIONS[source]}; its sources are: {', '.join(definition.sources)}."
-            )
-        if value:
-            validate_value(value, key)
-            if not definition.accepts(value):
-                raise CredentialError(
-                    f"{json.dumps(value)} is not one of the values of '{key}' (see 'vkm labels values {key}')."
-                )
         values[key] = value
-    return values
-
-
-def _offered(context: Context, definition: LabelDefinition) -> tuple[list[Choice] | None, str | None]:
-    """Values to choose from and where they come from: the definition's, the gateway's catalogue, or none."""
-    if definition.values is not None:
-        return list(definition.values), "values"
-    catalogue = context.gateway.catalogue(definition.key, context.credential, context.labels)
-    return (catalogue, "catalogue") if catalogue is not None else (None, None)
+    return context.explicit(values, source)
 
 
 def _pick(context: Context, definition: LabelDefinition) -> str:
     """Ask for one value: a listed one when values are offered, otherwise any valid typed value."""
     key = definition.key
-    choices, origin = _offered(context, definition)
+    choices, origin = context.offered(definition)
     description = f" - {json.dumps(definition.description)}" if definition.description else ""
     notify(f"Label {key}{description}")
     if choices:
@@ -323,23 +255,7 @@ def profile_list(context: Context) -> None:
 def profile_show(context: Context) -> None:
     profile = context.store.get(context.args.name)
     gateway = gateway_for(profile)
-    endpoints = {}
-    for api in Api:
-        try:
-            endpoints[api.value] = gateway.endpoint(api)
-        except CredentialError:
-            pass
-    value = {
-        "name": profile.name,
-        "gateway": {"type": profile.gateway_type, "url": profile.gateway},
-        "auth": {"type": profile.auth_type, **profile.auth},
-        "rules": profile.rules,
-        "endpoints": endpoints,
-        # The profile's own definitions, not merged with the central rules (the dev container relay copies them).
-        "labels": [],
-        "outputs": {},
-        **profile.definitions(),
-    }
+    value = profile_document(profile)
     if context.args.json:
         print(json.dumps(value))
         return
@@ -369,20 +285,14 @@ def token(context: Context) -> None:
     if context.args.require_attribution_env:
         # For tools that send the label headers from environment variables (Codex): no labels, no credential.
         require_attribution_environment(os.environ)
-    credential = context.credential()
     if not context.args.json:
-        print(credential.secret)
+        print(context.token())
         return
-    print(json.dumps({
-        "access_token": credential.secret,
-        "expires_at": credential.expires_at,
-        "profile": context.profile.name,
-        "user": credential.user,
-    }))
+    print(json.dumps(context.token_document()))
 
 
 def status(context: Context) -> None:
-    print(json.dumps(context.auth.status(), indent=2))
+    print(json.dumps(context.status(), indent=2))
 
 
 def logout(context: Context) -> None:
@@ -391,7 +301,7 @@ def logout(context: Context) -> None:
 
 
 def models_list(context: Context) -> None:
-    models = list_models(context.gateway, context.token())
+    models = context.models()
     if context.args.json:
         print(json.dumps([{"id": model} for model in models], indent=2))
         return
@@ -406,7 +316,7 @@ def models_list(context: Context) -> None:
 def labels_list(context: Context) -> None:
     config = context.labels
     if context.args.json:
-        print(json.dumps([{**definition.to_dict(), "origin": definition.origin} for definition in config.definitions], indent=2))
+        print(json.dumps(context.definitions(), indent=2))
         return
     for definition in config.definitions:
         kind = "required" if definition.required else "optional"
@@ -422,23 +332,18 @@ def labels_list(context: Context) -> None:
 
 
 def labels_values(context: Context) -> None:
-    key = validate_key(context.args.key)
-    definition = context.labels.get(key)
-    if definition is None:
-        raise _undefined(context.labels, key)
-    choices, origin = _offered(context, definition)
+    document = context.values_document(context.args.key)
     if context.args.json:
-        print(json.dumps({
-            "key": key, "source": origin,
-            "values": None if choices is None else [dataclasses.asdict(choice) for choice in choices],
-        }, indent=2))
+        print(json.dumps(document, indent=2))
         return
+    key, origin = document["key"], document["source"]
+    choices = document["values"]
     if choices is None:
         notify(f"'{key}' lists no values and the gateway has no catalogue for it; any valid value is accepted.")
         return
     for choice in choices:
-        text = choice.name or choice.description
-        print(json.dumps(choice.id) + (f"\t{json.dumps(text)}" if text else ""))
+        text = choice["name"] or choice["description"]
+        print(json.dumps(choice["id"]) + (f"\t{json.dumps(text)}" if text else ""))
     if origin == "values":
         notify(f"{len(choices)} value(s) from the definition of '{key}'.")
     else:
@@ -450,7 +355,7 @@ def _print_environment(context: Context, shell: str) -> None:
     try:
         directory = _directory(context.args)
         attribution = context.resolve(directory, find_checkout(directory), _show_explicit(context), "ignore")
-        values = header_environment(_integration_context(context), attribution)
+        values = header_environment(context.integration(), attribution)
     except Exception as error:  # noqa: BLE001 - whatever failed, no other folder's labels may stay set.
         # Missing required labels unset everything quietly, like a folder without labels on every cd.
         if not isinstance(error, CredentialError):
@@ -469,7 +374,7 @@ def _print_environment(context: Context, shell: str) -> None:
 
 def shell_init(context: Context) -> None:
     profile = ["--profile", context.args.profile] if context.args.profile else []
-    integration = _integration_context(context, labels=False)
+    integration = context.integration(labels=False)
     if context.args.terminal:
         if context.args.shell != "pwsh":
             raise CredentialError("--terminal is for PowerShell; other shells load the hook from their profile.")
@@ -493,19 +398,10 @@ def _print_pwsh_terminal(argv: list[str]) -> None:
     print(json.dumps(vscode, indent=2)[1:-1].strip("\n"))
 
 
-def _origin(checkout: Checkout | None) -> str:
-    if checkout is None or checkout.origin is None:
-        raise CredentialError(
-            "Personal bindings need a Git checkout with an HTTP/SSH origin remote. "
-            "Use 'repo bind --shared' to label a folder with a .vkm file instead."
-        )
-    return checkout.origin
-
-
 def _show_explicit(context: Context) -> dict[str, str | None]:
     """'repo show' explicit labels: the launch marker's with --launch, then --label, which wins per key."""
     explicit: dict[str, str | None] = launch_labels(os.environ) if context.args.launch else {}
-    explicit.update(_label_values(context.labels, context.args.label, "explicit"))
+    explicit.update(_label_values(context, context.args.label, "explicit"))
     return explicit
 
 
@@ -517,14 +413,7 @@ def repo_show(context: Context) -> None:
     checkout = find_checkout(directory)
     config = context.labels
     if context.args.json:
-        # Tools read this document: once the configuration loads, a resolution error is reported in it, not by exit 1.
-        explicit = _show_explicit(context)
-        try:
-            attribution = context.resolve(directory, checkout, explicit, "ignore")
-        except CredentialError as error:
-            print(json.dumps(failed_document(config, error, checkout)))
-        else:
-            print(json.dumps(show_document(config, attribution, directory, checkout)))
+        print(json.dumps(context.repository(directory, checkout, _show_explicit(context))))
         return
     # --label keys are checked here; marker keys this profile does not define are only listed as ignored.
     attribution = context.resolve(directory, checkout, _show_explicit(context), "ignore")
@@ -545,9 +434,10 @@ def repo_bind(context: Context) -> None:
     args = context.args
     directory = _directory(args)
     checkout = find_checkout(directory)
-    repository = None if args.shared else _origin(checkout)
+    if not args.shared:
+        checkout_origin(checkout)  # Refused before any label is checked or asked for.
     source = "file" if args.shared else "local"
-    labels = _label_values(context.labels, args.label, source)
+    labels = _label_values(context, args.label, source)
     if not labels:
         missing = context.resolve(directory, checkout).missing
         if not missing:
@@ -558,41 +448,29 @@ def repo_bind(context: Context) -> None:
         for key in missing:
             if key not in settable:
                 notify(
-                    f"'{key}' cannot be set with {_SOURCE_OPTIONS[source]}; "
+                    f"'{key}' cannot be set with {SOURCE_OPTIONS[source]}; "
                     f"its sources are: {', '.join(context.labels.get(key).sources)}."
                 )
         if not settable:
-            raise CredentialError(f"Nothing to ask: no missing required label can be set with {_SOURCE_OPTIONS[source]}.")
+            raise CredentialError(f"Nothing to ask: no missing required label can be set with {SOURCE_OPTIONS[source]}.")
         if not sys.stdin.isatty():
             raise CredentialError(
                 f"No --label given; pass --label KEY=VALUE for {', '.join(settable)}, or run this in a terminal to choose."
             )
         labels = _ask(context, settable)
-    if args.shared:
-        path = write_label_file(checkout.root if checkout is not None else directory, labels)
-        print(f"Wrote {path} with {_assigned(labels)}. Commit it to share it with your team.")
-        resolved = context.resolve(directory, checkout)
-        for key in labels:
-            label = resolved.get(key)
-            if label is not None and label.source not in (None, "file"):
-                notify(f"Note: '{key}' still comes from {label.source} ({label.detail}) here.")
+    binding = context.bind(directory, checkout, labels, shared=args.shared, replace=args.replace)
+    if binding.shared:
+        print(f"Wrote {binding.target} with {_assigned(binding.labels)}. Commit it to share it with your team.")
     else:
-        if not all(labels.values()):
-            raise CredentialError("A personal binding needs values; remove one with 'repo unbind --label KEY'.")
-        merged = RepositoryStore(context.store).bind(context.profile.gateway, repository, labels, replace=args.replace)
-        print(f"Bound {json.dumps(repository)} to {_assigned(merged)} for you only.")
-    _refresh_claude(context, directory, checkout)
+        print(f"Bound {json.dumps(binding.target)} to {_assigned(binding.labels)} for you only.")
 
 
 def repo_unbind(context: Context) -> None:
     directory = _directory(context.args)
-    checkout = find_checkout(directory)
-    repository = _origin(checkout)
-    keys = [validate_key(key) for key in context.args.label] if context.args.label else None
-    RepositoryStore(context.store).unbind(context.profile.gateway, repository, keys)
+    keys = context.args.label
+    repository = context.unbind(directory, find_checkout(directory), keys)
     removed = f"{', '.join(keys)} from your binding" if keys else "your binding"
     print(f"Removed {removed} for {json.dumps(repository)}.")
-    _refresh_claude(context, directory, checkout)
 
 
 def run(context: Context) -> int:
@@ -601,7 +479,7 @@ def run(context: Context) -> int:
     directory = _directory(args)
     checkout = find_checkout(directory)
     config = context.labels
-    explicit = _label_values(config, args.label, "explicit")
+    explicit = _label_values(context, args.label, "explicit")
     attribution = context.resolve(directory, checkout, explicit)
     context.notices()
     if attribution.missing:
@@ -623,28 +501,21 @@ def run(context: Context) -> int:
     notify(f"Labels pinned for this process (profile {profile.name}):")
     for line in _describe_labels(config, attribution):
         notify(f"  {line}")
-    return launch(args.agent, _integration_context(context, context.token()), attribution, arguments, args.model)
+    return launch(args.agent, context.integration(context.token()), attribution, arguments, args.model)
 
 
 # Tool setup and the Claude prompt guard
-
-
-def _integration_context(context: Context, token: str = "", *, labels: bool = True) -> IntegrationContext:
-    """``labels=False`` skips loading the rules where only the CLI command or the stored setup is needed."""
-    return IntegrationContext(
-        context.profile, context.gateway, token, context.store.home, labels=context.labels if labels else None,
-    )
 
 
 def setup_tool(context: Context) -> None:
     args = context.args
     integration = INTEGRATIONS[args.tool]
     if args.remove:
-        notes = integration.remove(_integration_context(context, labels=False))
+        notes = integration.remove(context.integration(labels=False))
     else:
         # Fail now, not later in the tool, when the profile is not signed in; some tools list models with it.
         token = context.token()
-        notes = integration.setup(_integration_context(context, token), args.model, args.replace)
+        notes = integration.setup(context.integration(token), args.model, args.replace)
         context.notices()
     for note in notes:
         print(note)
@@ -666,30 +537,13 @@ def claude_guard(context: Context) -> None:
         checkout = find_checkout(directory)
         # A session that 'run claude --label' started passes with its own labels: the launch marker is explicit.
         attribution = context.resolve(directory, checkout, launch_labels(os.environ), "ignore")
-        reason = CLAUDE.guard(_integration_context(context), directory, checkout, attribution, os.environ)
+        reason = CLAUDE.guard(context.integration(), directory, checkout, attribution, os.environ)
     except CredentialError as error:
         reason = f"vkm: {error}"
     except Exception:  # noqa: BLE001 - a crashing guard must not let the prompt through.
         reason = "vkm could not check the labels for this prompt; run 'vkm repo show'."
     if reason is not None:
         print(json.dumps({"decision": "block", "reason": reason}))
-
-
-def _refresh_claude(context: Context, directory: Path, checkout: Checkout | None) -> None:
-    """Rewrite Claude local settings this tool wrote, so running sessions follow changed labels.
-
-    Best effort after a change that is already saved: a failure is a warning (the guard still checks each prompt).
-    """
-    root = checkout.root if checkout is not None else None
-    try:
-        attribution = context.resolve(directory, checkout)
-        integration = _integration_context(context)
-        for folder in dict.fromkeys(folder for folder in (root, directory) if folder is not None):
-            path = folder / ".claude" / "settings.local.json"
-            if CLAUDE.refresh_local(integration, path, attribution, root):
-                notify(f"Updated {path}; running Claude sessions use the new labels from their next prompt.")
-    except CredentialError as error:
-        notify(f"Warning: Claude local settings were not updated: {error}")
 
 
 def _profile_option(command: argparse.ArgumentParser) -> None:
