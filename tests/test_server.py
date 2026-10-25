@@ -10,7 +10,7 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 from isolation import isolate_tool_configuration
-from virtual_key_mapper import __version__
+from virtual_key_mapper import __version__, cli
 from virtual_key_mapper.adapters import Credential
 from virtual_key_mapper.labels import Choice, LabelDefinition
 from virtual_key_mapper.profiles import Profile, ProfileStore
@@ -251,6 +251,35 @@ class ServerTests(unittest.TestCase):
         self.assertTrue(path.exists())
         remove_state(self.store, TOKEN)
         self.assertFalse(path.exists())
+
+
+class CommandTests(unittest.TestCase):
+    """The commands start the server with the right port, browser and proxy."""
+
+    def start(self, *arguments):
+        temp = tempfile.TemporaryDirectory()
+        self.addCleanup(temp.cleanup)
+        ProfileStore(Path(temp.name)).add(Profile("consulting", "https://gateway.example", {"team_id": "t"}))
+        with patch.object(cli, "serve") as serve:
+            code = cli.main(["--home", temp.name, *arguments, "--directory", temp.name])
+        return code, serve
+
+    def test_ui_opens_the_browser_on_a_free_port(self):
+        code, serve = self.start("ui")
+        self.assertEqual(code, 0)
+        self.assertEqual((serve.call_args.args[2], serve.call_args.kwargs), (0, {"browser": True, "proxy": None}))
+        self.assertFalse(self.start("ui", "--no-browser")[1].call_args.kwargs["browser"])
+
+    def test_serve_takes_labels_only_with_the_proxy(self):
+        code, serve = self.start("serve")
+        self.assertEqual((code, serve.call_args.kwargs), (0, {"browser": None, "proxy": None}))
+        code, serve = self.start("serve", "--proxy", "--profile", "consulting")
+        self.assertEqual(code, 0)
+        self.assertEqual(serve.call_args.args[2], cli.PROXY_PORT)
+        self.assertIsNotNone(serve.call_args.kwargs["proxy"])
+        code, serve = self.start("serve", "--label", "customer=acme")
+        self.assertEqual(code, 1)
+        serve.assert_not_called()
 
 
 if __name__ == "__main__":

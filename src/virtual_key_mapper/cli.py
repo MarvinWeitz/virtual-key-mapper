@@ -489,7 +489,7 @@ def serve_api(context: Context) -> None:
         labels = _label_values(context, args.label, "explicit")
         proxy = Proxy(context.store, directory, proxy_key(context.store), profile=args.profile, labels=labels)
         port = PROXY_PORT if port is None else port
-    elif args.label:
+    elif getattr(args, "label", None):
         raise CredentialError("--label sets the proxy's labels; add --proxy.")
     port = 0 if port is None else port
     if not 0 <= port <= 65535:
