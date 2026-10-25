@@ -1,0 +1,63 @@
+name: Bug report
+description: Something in vkm or one of the VS Code extensions does not work as expected.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Never paste a token, a refresh token or a `proxy.key` here. `vkm status` and `vkm profile show --json` print no secrets.
+  - type: textarea
+    id: description
+    attributes:
+      label: What happened?
+      description: Describe the problem and what you expected to happen instead.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps to reproduce
+      description: The commands you ran or what you did in the setup page or VS Code.
+      placeholder: |
+        1. vkm setup codex
+        2. codex in a repository with ...
+    validations:
+      required: true
+  - type: dropdown
+    id: component
+    attributes:
+      label: Component
+      multiple: true
+      options:
+        - CLI (sign-in, profiles, labels)
+        - Claude Code
+        - Codex
+        - OpenCode
+        - Copilot Chat extension (cbs-consulting.vkm)
+        - Host sign-in extension (cbs-consulting.vkm-host)
+        - vkm serve, proxy or setup page (vkm ui)
+        - Dev Containers, SSH or WSL
+        - Not sure
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: vkm version
+      description: Output of `vkm --version`, and the extension version if you use VS Code.
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: Environment
+      description: Operating system, Python version, the tool and its version, and the gateway (for example LiteLLM and its version).
+      placeholder: Windows 11, Python 3.13, Codex 0.161.0, LiteLLM 1.80
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: Relevant error output, with secrets removed. It is formatted as code automatically.
+      render: shell

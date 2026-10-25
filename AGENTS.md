@@ -22,6 +22,7 @@ in (`customer = "acme"`), and nothing is sent while a required label has no valu
 | `ci/agents/` | Pinned versions of the real agents for the live tests. |
 | `ci/devcontainer/` | The dev container test (host side and container side). |
 | `docs/` | Architecture, adapters, labels, network, testing. `docs/plan/` is historical; do not update it. |
+| `CONTRIBUTING.md`, `SECURITY.md`, `CODE_OF_CONDUCT.md`, `.github/` | The guide for human contributors, the security policy, the code of conduct, issue and pull request templates and Dependabot. Keep `CONTRIBUTING.md` in line with the rules here. |
 
 ## Commands
 
@@ -92,8 +93,8 @@ There is no linter or formatter configured. Match the style of the surrounding c
   tense, and say what happens for the user ("the prompt is blocked"), not how it is implemented.
   Docstrings are one line where possible. Follow that style.
 - **Commits and PRs.** The subject is an imperative sentence in plain words ("Let Claude Code list
-  the gateway's models"); the body says why. The upstream repository is
-  `cbs-consulting/virtual-key-mapper`; work may happen on a fork.
+  the gateway's models"); the body says why, and the PR fills in `.github/pull_request_template.md`.
+  The upstream repository is `cbs-consulting/virtual-key-mapper`; work may happen on a fork.
 
 ## Workflows
 
