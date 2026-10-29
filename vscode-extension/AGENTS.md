@@ -28,6 +28,8 @@ token ever reaches a remote window.
 - TypeScript is `strict` with `noUnusedLocals`. Each file starts with a comment saying what it does.
 - No runtime dependencies: the packages are built with `--no-dependencies`. Dev dependencies are
   pinned exactly.
+- `@types/vscode` matches `engines.vscode` (in both `package.json` files); vsce refuses to package
+  when the types are newer. Dependabot leaves it alone, so raise both together by hand.
 
 ## Commands
 
