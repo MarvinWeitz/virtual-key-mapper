@@ -63,6 +63,9 @@ Never paste a token, a refresh token or a `proxy.key` into an issue. `vkm status
    pull requests queued ahead of it, and merges it when the checks pass there too. You don't have
    to update your branch with `main` first.
 
+Dependabot's minor and patch updates to npm packages and GitHub Actions are approved and queued
+automatically once their checks pass. Major updates and pip updates wait for a maintainer.
+
 Do not change the version: it is raised only when a release is prepared.
 
 ## Commit messages
