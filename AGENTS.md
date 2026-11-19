@@ -19,6 +19,7 @@ in (`customer = "acme"`), and nothing is sent while a required label has no valu
 | `tests/` | `unittest` suite. `isolation.py` redirects tool config; `live.py` gates tests on real binaries. |
 | `vscode-extension/` | The Copilot Chat extension `cbs-consulting.vkm` (TypeScript), with its own [AGENTS.md](vscode-extension/AGENTS.md). |
 | `vscode-extension/local/` | The companion extension `cbs-consulting.vkm-host` that runs on the local machine. |
+| `skills/`, `plugin.json`, `.claude-plugin/` | The `vkm-setup` agent skill for users, published as the plugin `virtual-key-mapper` in the cbs agentic marketplace. Not the contributor skills in `.claude/skills/`. |
 | `ci/agents/` | Pinned versions of the real agents for the live tests. |
 | `ci/devcontainer/` | The dev container test (host side and container side). |
 | `docs/` | Architecture, adapters, labels, network, testing. `docs/plan/` is historical; do not update it. |
@@ -60,8 +61,9 @@ There is no linter or formatter configured. Match the style of the surrounding c
   in the same pull request. A pull request that changes nothing a user notices (CI, tests,
   internal docs, agent files) gets the label `no changelog` instead.
 - **One version everywhere.** `pyproject.toml`, `src/virtual_key_mapper/__init__.py`,
-  `vscode-extension/package.json`, `vscode-extension/package-lock.json` and
-  `vscode-extension/local/package.json` must agree (`tests/test_release.py`). Only change it when
+  `vscode-extension/package.json`, `vscode-extension/package-lock.json`,
+  `vscode-extension/local/package.json`, `plugin.json` and `.claude-plugin/plugin.json` must agree
+  (`tests/test_release.py`, `tests/test_skill.py`). Only change it when
   preparing a release (see `.claude/skills/prepare-release`).
 - **Tests never touch the real machine.** Call `isolate_tool_configuration(self)` from
   `tests/isolation.py` in any test that sets up a tool, and use temporary folders for profiles.
@@ -89,6 +91,8 @@ There is no linter or formatter configured. Match the style of the surrounding c
   - label resolution or formats: [docs/labels.md](docs/labels.md)
   - something CI cannot check: the manual checklist in [docs/testing.md](docs/testing.md)
   - a new adapter: [docs/adapters.md](docs/adapters.md) and the README tables
+  - a new or changed command or setup step: the user skill [skills/vkm-setup/SKILL.md](skills/vkm-setup/SKILL.md)
+    (`tests/test_skill.py` checks that its commands and options exist)
 - **Writing style.** The docs, comments and changelog use short, plain sentences in the present
   tense, and say what happens for the user ("the prompt is blocked"), not how it is implemented.
   Docstrings are one line where possible. Follow that style.

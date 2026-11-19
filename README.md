@@ -135,6 +135,24 @@ The gateway must be served at its host root with LiteLLM's `PROXY_BASE_URL` set 
 `vkm profile remove NAME` signs out of a profile and deletes it; tools set up with it then get no
 more keys.
 
+### Let your coding agent set it up
+
+The skill `vkm-setup` walks a coding agent through the same steps: it checks the installation,
+asks you for the gateway, team and labels, has you sign in, connects your tools and assigns the
+labels of a repository. It never shows a key and changes tool configuration only through `vkm setup`.
+It comes from the [cbs agentic marketplace](https://github.com/cbs-consulting/agentic-marketplace)
+as the plugin `virtual-key-mapper`:
+
+```text
+/plugin marketplace add cbs-consulting/agentic-marketplace
+/plugin install virtual-key-mapper@cbs-consulting
+```
+
+That is Claude Code; Codex (`codex plugin marketplace add cbs-consulting/agentic-marketplace`) and
+GitHub Copilot CLI (`copilot plugin install virtual-key-mapper@cbs-consulting`) work the same way.
+Other agents get the skill with `npx skills add cbs-consulting/virtual-key-mapper`. Then ask your
+agent to "set up vkm".
+
 ## 🧭 Labels
 
 A label is a key with a value, such as `customer = "acme"` or `project = "webshop"`. What a
@@ -458,8 +476,8 @@ Visual Studio Code**). The Marketplace accepts a package only for the publisher 
 
 Every change goes into the "Unreleased" section of `CHANGELOG.md` in its pull request; the
 "Changelog entry" check fails otherwise, unless the pull request has the label "no changelog".
-To prepare a release, set the same version in `pyproject.toml`, `src/virtual_key_mapper/__init__.py`
-and both `package.json` files (`npm install` in `vscode-extension/` updates the lockfile), and
+To prepare a release, set the same version in `pyproject.toml`, `src/virtual_key_mapper/__init__.py`,
+both `package.json` files and both `plugin.json` files (`npm install` in `vscode-extension/` updates the lockfile), and
 rename "Unreleased" to `VERSION - DATE`; the tests check that they agree. The workflow can be run
 again and skips what is already published; its "dry run" option only checks and builds.
 
