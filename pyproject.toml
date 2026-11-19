@@ -23,7 +23,7 @@ classifiers = [
     "Topic :: Software Development",
 ]
 dependencies = [
-    "filelock==4.2.4",
+    "filelock==4.2.10",
     "keyring==25.7.0",
 ]
 
