@@ -1,0 +1,14 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "virtual-key-mapper",
+  "version": "0.1.2",
+  "description": "Sets up vkm: signs in to your company LLM gateway, connects Claude Code, Codex, OpenCode and other tools, and assigns the labels of your repositories.",
+  "author": {
+    "name": "cbs Corporate Business Solutions Unternehmensberatung GmbH",
+    "email": "cp_opensource@cbs-consulting.de"
+  },
+  "homepage": "https://github.com/cbs-consulting/virtual-key-mapper#readme",
+  "repository": "https://github.com/cbs-consulting/virtual-key-mapper",
+  "license": "Apache-2.0",
+  "keywords": ["llm-gateway", "litellm", "sso", "cost-attribution", "claude-code", "codex", "opencode"]
+}

@@ -7,6 +7,11 @@ the date.
 
 ## Unreleased
 
+- New agent skill `vkm-setup`: a coding agent can now set up vkm for you. It checks the
+  installation, adds your gateway profile, has you sign in, connects Claude Code, Codex, OpenCode
+  or other tools through the local proxy, and assigns a repository's labels. Install it as the
+  plugin `virtual-key-mapper` from the cbs agentic marketplace, or with
+  `npx skills add cbs-consulting/virtual-key-mapper`.
 - `vkm profile remove NAME` signs out of a profile and deletes it. The setup page can delete a
   profile too, and edit its labels (description, values to choose from, required) and its label
   rules under "Profile settings".

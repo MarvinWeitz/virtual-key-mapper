@@ -18,7 +18,7 @@ to agree.
 
 ## 2. Change it everywhere
 
-Set the same version in all five places:
+Set the same version in all seven places:
 
 1. `pyproject.toml`: `version = "X.Y.Z"`
 2. `src/virtual_key_mapper/__init__.py`: `__version__ = "X.Y.Z"`
@@ -26,6 +26,8 @@ Set the same version in all five places:
 4. `vscode-extension/local/package.json`: `"version"`
 5. `vscode-extension/package-lock.json`: run `npm install --ignore-scripts` in `vscode-extension/`
    to update it. Check with `git diff` that only the two version fields changed.
+6. `plugin.json`: `"version"`
+7. `.claude-plugin/plugin.json`: `"version"`
 
 ## 3. Date the changelog
 
@@ -36,7 +38,7 @@ but tidy the wording if needed: each line says what changed for a user. Do not a
 ## 4. Check
 
 ```bash
-python -m unittest tests.test_release -v
+python -m unittest tests.test_release tests.test_skill -v
 python -m unittest discover -s tests
 cd vscode-extension && npm test && cd local && npm test
 ```
